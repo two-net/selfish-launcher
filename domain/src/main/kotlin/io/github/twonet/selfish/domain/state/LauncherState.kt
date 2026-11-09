@@ -2,6 +2,7 @@ package io.github.twonet.selfish.domain.state
 
 import io.github.twonet.selfish.domain.layout.LayoutRules
 import io.github.twonet.selfish.domain.model.AppEntry
+import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.model.Settings
 import io.github.twonet.selfish.domain.ports.ClockInfo
@@ -71,6 +72,42 @@ val LauncherState.covers: List<AppEntry>
         val byId = apps.associateBy { it.id }
         return home.mapNotNull { byId[it] }
     }
+
+/**
+ * The App Grid's items in the user's order (FR-GRID-02, FR-GRID-05), with
+ * each app's catalog entry. Like [covers], an app the catalog hasn't
+ * reported yet is left out, and so is a folder left with none.
+ */
+val LauncherState.gridCells: List<GridCell>
+    get() {
+        val grid = layout?.grid.orEmpty()
+        if (grid.isEmpty()) return emptyList()
+        val byId = apps.associateBy { it.id }
+        return grid.mapNotNull { item ->
+            when (item) {
+                is GridItem.App -> byId[item.id]?.let(GridCell::App)
+                is GridItem.Folder -> item.apps.mapNotNull { byId[it] }.takeIf { it.isNotEmpty() }?.let { GridCell.Folder(item, it) }
+            }
+        }
+    }
+
+/** One App Grid item as shown: an app, or a folder with its apps, each with its catalog entry. */
+sealed interface GridCell {
+    /** The layout item this cell shows. */
+    val item: GridItem
+
+    data class App(val entry: AppEntry) : GridCell {
+        override val item: GridItem get() = GridItem.App(entry.id)
+    }
+
+    data class Folder(val folder: GridItem.Folder, val apps: List<AppEntry>) : GridCell {
+        override val item: GridItem get() = folder
+    }
+}
+
+/** What the open context menu belongs to, if one is open (FR-HOME-06, FR-GRID-06). */
+val LauncherState.contextMenu: MenuTarget?
+    get() = overlays.filterIsInstance<Overlay.ContextMenu>().lastOrNull()?.target
 
 /** Whether Home has no room for another cover, so "Add to Home" explains instead (FR-HOME-05). */
 val LauncherState.homeFull: Boolean

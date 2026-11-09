@@ -25,6 +25,13 @@ issues add their items here. Every release PR signs off the whole list.
 - [ ] [FR-HOME-06, FR-ANIM-05, FR-ANIM-06, FR-ANIM-08] Long-pressing a cover lifts it and slides its menu open beneath its row; dragging closes the menu, the cover follows the finger at about 110% with a shadow, the others make room, and the dropped cover settles into place. A screen recording is checked against the Medium duration.
 - [ ] [FR-HOME-07] On a first run (`adb shell pm clear`), Home shows the device's default phone, messaging, browser and camera apps, in that order, skipping any that are missing or have no default.
 
+## App Grid (SRS §4.3)
+
+- [ ] [FR-GRID-01, FR-ANIM-01] Swiping up on Home slides the App Grid up while the wallpaper dims in step, and blurs on a device with cross-window blur (R-1); without blur (the Galaxy S22, API 29–30, Battery Saver) the dim alone looks intentional. Checked with gesture and 3-button navigation.
+- [ ] [FR-GRID-06] On a device, long-pressing an app opens its menu beneath its row; App info opens the system's app details and Uninstall its confirmation (cancelled, then confirmed for a test app), and system apps don't offer Uninstall.
+- [ ] [FR-GRID-07, FR-GRID-08] Holding a dragged app near the top or bottom scrolls the grid at a controllable speed; passing over apps doesn't push them away, resting beside one does, and dropping onto one makes a folder. A screen recording is checked against the Medium duration.
+- [ ] [AC-07, FR-GRID-09, NFR-REL-05] With the grid open and scrolled, `adb install` of an app adds it at the end without moving what is on screen, and `adb uninstall` removes it without leaving a gap or closing the grid.
+
 ## User interface (SRS §5.1)
 
 - [ ] [UI-01] Every surface floats over the wallpaper on the `glass`, `scrim` or `dim` tokens; no surface has an opaque full-screen background. Checked in both appearances over a bright and a dark wallpaper.

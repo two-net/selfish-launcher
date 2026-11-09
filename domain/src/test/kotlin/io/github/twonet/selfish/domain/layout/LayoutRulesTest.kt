@@ -144,6 +144,82 @@ class LayoutRulesTest {
         assertEquals(listOf(2, 2, 2, 2, 3, 3, 3, 3, 3), (1..9).map(LayoutRules::coverColumns))
     }
 
+    // App Grid (FR-GRID-05, FR-GRID-07, FR-GRID-08)
+
+    /** The invariants of DESIGN §4.2 that the App Grid's operations must keep. */
+    private fun assertGridInvariants(layout: Layout) {
+        val apps = layout.grid.flatMap {
+            when (it) {
+                is GridItem.App -> listOf(it.id)
+                is GridItem.Folder -> it.apps
+            }
+        }
+        assertEquals(apps.distinct(), apps, "No app twice")
+        assertTrue(layout.grid.filterIsInstance<GridItem.Folder>().all { it.apps.size >= 2 }, "No empty or one-app folder")
+        assertHomeInvariants(layout)
+    }
+
+    @Test
+    @Verifies("FR-GRID-05", "FR-GRID-07")
+    fun `moving a grid item keeps the order of the others`() {
+        val layout = Layout(grid = listOf(item("a"), folder(1, "b", "c"), item("d"), item("e")))
+
+        assertEquals(
+            listOf(item("d"), item("a"), folder(1, "b", "c"), item("e")),
+            LayoutRules.moveItem(layout, item("d"), 0).grid,
+        )
+        assertEquals(
+            listOf(item("a"), item("d"), item("e"), folder(1, "b", "c")),
+            LayoutRules.moveItem(layout, folder(1, "b", "c"), 3).grid,
+        )
+        listOf(0, 1, 2, 3).forEach { assertGridInvariants(LayoutRules.moveItem(layout, item("a"), it)) }
+    }
+
+    @Test
+    @Verifies("FR-GRID-05")
+    fun `a folder is moved by its ID, a move past either end stops there, and a stranger changes nothing`() {
+        val layout = Layout(grid = listOf(item("a"), folder(1, "b", "c"), item("d")))
+
+        // Renamed since the drag began: still the same folder.
+        val renamed = GridItem.Folder(FolderId(1), "Renamed", listOf(app("b"), app("c")))
+        assertEquals(listOf(folder(1, "b", "c"), item("a"), item("d")), LayoutRules.moveItem(layout, renamed, -5).grid)
+        assertEquals(listOf(folder(1, "b", "c"), item("d"), item("a")), LayoutRules.moveItem(layout, item("a"), 99).grid)
+        assertEquals(layout, LayoutRules.moveItem(layout, item("z"), 0))
+        assertEquals(layout, LayoutRules.moveItem(layout, folder(9, "x", "y"), 0))
+        assertEquals(layout, LayoutRules.moveItem(layout, item("d"), 2))
+    }
+
+    @Test
+    @Verifies("FR-GRID-08", "FR-FOLD-01")
+    fun `dropping an app onto another makes a folder of both in the target's place`() {
+        val layout = Layout(grid = listOf(item("a"), folder(4, "x", "y"), item("b"), item("c")), home = listOf(app("a")))
+
+        val dropped = LayoutRules.dropOnto(layout, app("a"), app("c"))
+
+        val made = GridItem.Folder(FolderId(5), GridItem.Folder.DEFAULT_NAME, listOf(app("c"), app("a")))
+        assertEquals(listOf(folder(4, "x", "y"), item("b"), made), dropped.grid)
+        assertEquals(layout.home, dropped.home, "An app in a folder can still be a cover")
+        assertEquals("Folder", made.name)
+        assertGridInvariants(dropped)
+
+        // Backwards: the dragged app comes after the target.
+        val backwards = LayoutRules.dropOnto(layout, app("c"), app("b"))
+        assertEquals(listOf(item("a"), folder(4, "x", "y"), made.copy(apps = listOf(app("b"), app("c")))), backwards.grid)
+        assertGridInvariants(backwards)
+    }
+
+    @Test
+    @Verifies("FR-GRID-08", "FR-FOLD-08")
+    fun `only a loose app onto another loose app makes a folder`() {
+        val layout = Layout(grid = listOf(item("a"), folder(1, "b", "c"), item("d")))
+
+        assertEquals(layout, LayoutRules.dropOnto(layout, app("a"), app("a")))
+        assertEquals(layout, LayoutRules.dropOnto(layout, app("a"), app("b")), "Into a folder is #8's")
+        assertEquals(layout, LayoutRules.dropOnto(layout, app("b"), app("d")), "Out of a folder is #8's")
+        assertEquals(layout, LayoutRules.dropOnto(layout, app("z"), app("a")))
+        assertEquals(layout, LayoutRules.dropOnto(layout, app("a"), app("z")))
+    }
+
     private fun entry(name: String) = AppEntry(app(name), name)
 
     @Test

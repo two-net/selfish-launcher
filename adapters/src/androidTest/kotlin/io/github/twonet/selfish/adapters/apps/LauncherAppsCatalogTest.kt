@@ -8,6 +8,9 @@ import android.os.Process
 import android.os.UserManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
 import io.github.twonet.selfish.adapters.ForegroundActivity
 import io.github.twonet.selfish.domain.Verifies
 import io.github.twonet.selfish.domain.model.AppEntry
@@ -166,13 +169,67 @@ class LauncherAppsCatalogTest {
     }
 
     /** The package the system starts for an intent without asking, or `null` if it would ask or has nothing. */
-    private fun systemDefault(intent: String): String? =
+    private fun systemDefault(intent: String): String? = resolvedPackage(intent)?.takeUnless { it == "android" }
+
+    /** Every app is removable unless the system says its package is a system package (FR-GRID-06). */
+    @Test
+    @Verifies("FR-GRID-06")
+    fun systemAppsAreNotRemovableAndOthersAre() = runBlocking {
+        setStub(enabled = true)
+        val apps = withTimeout(TIMEOUT) { catalog.apps().first { it.stub() != null } }
+        val system = shell("pm list packages -s --user current").lines()
+            .map { it.removePrefix("package:").trim() }
+            .filter { it.isNotEmpty() }
+            .toSet()
+
+        assertTrue(apps.stub()!!.removable, "This test's own package can be uninstalled")
+        assertTrue(apps.any { !it.removable }, "A device always has some system apps")
+        apps.forEach { assertEquals(it.id.packageName !in system, it.removable, "${it.id.packageName}") }
+    }
+
+    /** "App info" opens the system's details screen for the app; Back closes it (FR-GRID-06). */
+    @Test
+    @Verifies("FR-GRID-06")
+    fun appInfoOpensTheSystemsDetailsScreen() = runBlocking {
+        setStub(enabled = true)
+        val settings = assertNotNull(resolvedPackage("-a android.settings.APPLICATION_DETAILS_SETTINGS -d package:${stub.packageName}"))
+
+        catalog.openAppInfo(stubId)
+
+        try {
+            assertTrue(device.wait(Until.hasObject(By.pkg(settings)), TIMEOUT.inWholeMilliseconds), "No details screen in $settings")
+        } finally {
+            device.pressBack()
+        }
+    }
+
+    /**
+     * "Uninstall" opens the system's confirmation for the app. The test
+     * presses Back, so nothing is uninstalled (FR-GRID-06).
+     */
+    @Test
+    @Verifies("FR-GRID-06")
+    fun uninstallOpensTheSystemsConfirmation() = runBlocking {
+        val installer = assertNotNull(resolvedPackage("-a android.intent.action.DELETE -d package:${stub.packageName}"))
+
+        catalog.requestUninstall(stubId)
+
+        try {
+            assertTrue(device.wait(Until.hasObject(By.pkg(installer)), TIMEOUT.inWholeMilliseconds), "No confirmation from $installer")
+        } finally {
+            device.pressBack()
+        }
+    }
+
+    private val device: UiDevice = UiDevice.getInstance(instrumentation)
+
+    /** The package of the activity the system resolves [intent] to, given as `cmd package` arguments. */
+    private fun resolvedPackage(intent: String): String? =
         shell("cmd package resolve-activity --brief --user current $intent")
             .lines()
             .lastOrNull { it.isNotBlank() }
             ?.let { ComponentName.unflattenFromString(it.trim()) }
             ?.packageName
-            ?.takeUnless { it == "android" }
 
     @Test
     fun anAppThatIsGoneHasNoIcon() = runBlocking {

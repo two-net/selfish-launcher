@@ -3,6 +3,7 @@ package io.github.twonet.selfish.systemtest
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import io.github.twonet.selfish.domain.Verifies
@@ -89,6 +90,30 @@ class SystemIntegrationTest {
     }
 
     @Test
+    @Verifies("FR-GEN-03", "FR-GEN-04", "FR-GRID-01")
+    fun backAndHomeCloseTheAppGrid() {
+        showLauncherAsHome()
+        val search = By.text(launcherString("grid_search_placeholder"))
+
+        openAppGrid(search)
+        device.pressBack()
+        assertTrue(device.wait(Until.gone(search), TIMEOUT_MS), "Back didn't close the App Grid")
+        assertLauncherInFront()
+
+        openAppGrid(search)
+        device.pressHome()
+        assertTrue(device.wait(Until.gone(search), TIMEOUT_MS), "Home didn't close the App Grid")
+
+        // From another app, Home comes back to Home, not to the grid left open.
+        openAppGrid(search)
+        shell("am start -W -a android.settings.SETTINGS")
+        assertTrue(device.wait(Until.gone(By.pkg(LAUNCHER).depth(0)), TIMEOUT_MS), "Settings didn't open")
+        device.pressHome()
+        assertLauncherInFront()
+        assertTrue(device.wait(Until.gone(search), TIMEOUT_MS), "The App Grid was still open")
+    }
+
+    @Test
     @Verifies("FR-GEN-08")
     fun homeReopensTheLauncherAfterTheSystemEndsItsProcess() {
         showLauncherAsHome()
@@ -110,6 +135,19 @@ class SystemIntegrationTest {
         setHomeApp(LAUNCHER)
         device.pressHome()
         assertLauncherInFront()
+    }
+
+    /** Swipes up from the middle of Home, outside the system's gesture areas, until [search] shows (FR-GRID-01). */
+    private fun openAppGrid(search: BySelector) {
+        device.swipe(device.displayWidth / 2, device.displayHeight / 2, device.displayWidth / 2, device.displayHeight / 10, SWIPE_STEPS)
+        assertTrue(device.wait(Until.hasObject(search), TIMEOUT_MS), "The App Grid didn't open")
+    }
+
+    /** One of the launcher's strings, in the device's language. */
+    @Suppress("DiscouragedApi") // The launcher's R class isn't visible from this test module.
+    private fun launcherString(name: String): String {
+        val resources = InstrumentationRegistry.getInstrumentation().context.packageManager.getResourcesForApplication(LAUNCHER)
+        return resources.getString(resources.getIdentifier(name, "string", LAUNCHER))
     }
 
     private fun assertLauncherInFront() {
@@ -150,6 +188,9 @@ class SystemIntegrationTest {
         const val HOME_ROLE = "android.app.role.HOME"
         const val TIMEOUT_MS = 10_000L
         const val POLL_MS = 200L
+
+        /** About a tenth of a second, at five milliseconds a step. */
+        const val SWIPE_STEPS = 20
 
         /** The system's role prompt; its package differs between Android builds. */
         val PERMISSION_CONTROLLER: Pattern = Pattern.compile(".*permissioncontroller.*")

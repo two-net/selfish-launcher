@@ -23,4 +23,9 @@ data class AppEntry(
      * is loaded again (FR-GEN-06). Only meaningful within one process.
      */
     val version: Long = 0,
+    /**
+     * Whether the user can uninstall the app. System apps can't, so their
+     * App Grid menu doesn't offer it (FR-GRID-06).
+     */
+    val removable: Boolean = true,
 )

@@ -112,7 +112,7 @@ class DesignTokensTest {
     @Verifies("UI-06", "UI-05")
     fun `spacing and sizes sit on the 4 dp scale and touch targets are at least 48 dp`() {
         assertEquals(4.dp, Spacing.Step)
-        val offScale = (Spacing.scale + listOf(Sizes.Icon, Sizes.MinTouchTarget, Sizes.LiftElevation))
+        val offScale = (Spacing.scale + listOf(Sizes.Icon, Sizes.MinTouchTarget, Sizes.LiftElevation, Sizes.FolderPreviewIcon, Sizes.AutoScrollEdge))
             .filter { it.value <= 0f || it.value % Spacing.Step.value != 0f }
 
         assertEquals(emptyList(), offScale, "Not a multiple of ${Spacing.Step}")

@@ -8,8 +8,8 @@ import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.ports.DefaultApps
 
 /**
- * Pure operations over a [Layout] (DESIGN §4.2). The editing operations of
- * Home, the App Grid and folders join these.
+ * Pure operations over a [Layout] (DESIGN §4.2). Folder editing (#8) joins
+ * these.
  */
 object LayoutRules {
     /** Home holds at most this many covers (FR-HOME-03, FR-HOME-05). */
@@ -81,6 +81,50 @@ object LayoutRules {
         if (target == from) return layout
         val home = layout.home.toMutableList().apply { removeAt(from); add(target, app) }
         return layout.copy(home = home)
+    }
+
+    /**
+     * Moves the App Grid [item] to position [to], clamped to the grid's
+     * bounds; everything else keeps its order (FR-GRID-05, FR-GRID-07). Apps
+     * are matched by [AppId] and folders by [FolderId], so a folder renamed
+     * meanwhile is still found. An item not in the grid changes nothing.
+     */
+    fun moveItem(layout: Layout, item: GridItem, to: Int): Layout {
+        val from = layout.grid.indexOfFirst { it.sameAs(item) }
+        if (from < 0) return layout
+        val target = to.coerceIn(0, layout.grid.lastIndex)
+        if (target == from) return layout
+        val grid = layout.grid.toMutableList().apply { add(target, removeAt(from)) }
+        return layout.copy(grid = grid)
+    }
+
+    /**
+     * Drops [app] onto [target], making a folder named
+     * [GridItem.Folder.DEFAULT_NAME] that holds both, in that order, in the
+     * target's place (FR-GRID-08, FR-FOLD-01). Both must be apps on their own
+     * in the grid, not in a folder, and different; otherwise nothing changes.
+     * Home is left as it is: an app in a folder can still be a cover.
+     */
+    fun dropOnto(layout: Layout, app: AppId, target: AppId): Layout {
+        if (app == target) return layout
+        val loose = layout.grid.filterIsInstance<GridItem.App>().mapTo(HashSet()) { it.id }
+        if (app !in loose || target !in loose) return layout
+        val folder = GridItem.Folder(id = nextFolderId(layout), apps = listOf(target, app))
+        val grid = layout.grid.mapNotNull { item ->
+            when {
+                item !is GridItem.App -> item
+                item.id == target -> folder
+                item.id == app -> null
+                else -> item
+            }
+        }
+        return layout.copy(grid = grid)
+    }
+
+    /** Whether [this] and [other] are the same grid item: the same app, or the same folder. */
+    private fun GridItem.sameAs(other: GridItem): Boolean = when (this) {
+        is GridItem.App -> other is GridItem.App && other.id == id
+        is GridItem.Folder -> other is GridItem.Folder && other.id == id
     }
 
     /** Home's column count for [covers] covers: 2 for up to 4, 3 for 5 to 9 (FR-HOME-03). */

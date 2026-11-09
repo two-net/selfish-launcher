@@ -125,6 +125,21 @@ fun reduce(state: LauncherState, action: Action): Next = when (action) {
 
     is Action.MoveCover ->
         Next(closeContextMenu(state.editLayout { LayoutRules.moveCover(it, action.app, action.to) }))
+
+    // A menu belongs to the layer it was opened on, so moving to another
+    // layer closes it.
+    is Action.LayerSettled ->
+        if (action.layer == state.layer) Next(state) else Next(state.copy(layer = action.layer, overlays = emptyList()))
+
+    is Action.MoveGridItem ->
+        Next(closeContextMenu(state.editLayout { LayoutRules.moveItem(it, action.item, action.to) }))
+
+    is Action.DropOnto ->
+        Next(closeContextMenu(state.editLayout { LayoutRules.dropOnto(it, action.app, action.target) }))
+
+    is Action.OpenAppInfo -> Next(closeContextMenu(state), listOf(Effect.OpenAppInfo(action.app)))
+
+    is Action.Uninstall -> Next(closeContextMenu(state), listOf(Effect.RequestUninstall(action.app)))
 }
 
 /** [this] with every context menu closed, or [this] itself if none is open. */

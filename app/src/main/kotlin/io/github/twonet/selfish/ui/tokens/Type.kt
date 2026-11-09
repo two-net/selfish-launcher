@@ -30,6 +30,12 @@ class LauncherType(
     }
 }
 
+/**
+ * The system font scale from which App Grid labels may take two lines
+ * instead of one (FR-GRID-02, NFR-A11Y-04).
+ */
+const val LARGE_FONT_SCALE = 1.3f
+
 /** The four sizes of UI-04. */
 enum class TextRole { Display, Header, Body, Label }
 

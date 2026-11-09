@@ -3,6 +3,7 @@ package io.github.twonet.selfish.domain.state
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.AppId
 import io.github.twonet.selfish.domain.model.Bounds
+import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.model.Settings
 import io.github.twonet.selfish.domain.ports.ClockInfo
@@ -61,4 +62,24 @@ sealed interface Action {
 
     /** A cover was dropped at position [to] (FR-HOME-06). */
     data class MoveCover(val app: AppId, val to: Int) : Action
+
+    /**
+     * The user moved to [layer]: a swipe was released past its threshold or
+     * flung (FR-GRID-01, FR-GRID-04, FR-GEST-02), or a screen reader asked
+     * for it (FR-GEST-09). Presentation owns the transition while the finger
+     * is down; this is where it ends up (DESIGN §3.3).
+     */
+    data class LayerSettled(val layer: Layer) : Action
+
+    /** An App Grid item was dropped at position [to] (FR-GRID-05, FR-GRID-07). */
+    data class MoveGridItem(val item: GridItem, val to: Int) : Action
+
+    /** [app] was dropped onto [target], which makes a folder of the two (FR-GRID-08, FR-FOLD-01). */
+    data class DropOnto(val app: AppId, val target: AppId) : Action
+
+    /** "App info" (FR-GRID-06). */
+    data class OpenAppInfo(val app: AppId) : Action
+
+    /** "Uninstall", which opens the system's confirmation (FR-GRID-06). */
+    data class Uninstall(val app: AppId) : Action
 }

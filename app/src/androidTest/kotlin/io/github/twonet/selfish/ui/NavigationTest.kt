@@ -1,0 +1,155 @@
+package io.github.twonet.selfish.ui
+
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performCustomAccessibilityActionWithLabel
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.unit.dp
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import io.github.twonet.selfish.R
+import io.github.twonet.selfish.domain.Verifies
+import io.github.twonet.selfish.domain.state.Action
+import io.github.twonet.selfish.domain.state.Layer
+import io.github.twonet.selfish.ui.TestLauncher.Companion.app
+import io.github.twonet.selfish.ui.TestLauncher.Companion.launcher
+import io.github.twonet.selfish.ui.grid.AppGridTags
+import io.github.twonet.selfish.ui.home.HomeTags
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+/**
+ * Moving between Home and the App Grid (level I, DESIGN §8.3): the swipes,
+ * their thresholds and the screen-reader way in. Events and the Top Menu
+ * join with #10 and #11.
+ */
+@RunWith(AndroidJUnit4::class)
+class NavigationTest {
+    @get:Rule
+    val rule = createComposeRule()
+
+    private val context = InstrumentationRegistry.getInstrumentation().targetContext
+    private val launcher = TestLauncher(rule)
+    private val apps = (1..60).map { app("App %02d".format(it)) }
+
+    private fun root() = rule.onNodeWithTag(LauncherTags.ROOT)
+
+    private fun gridApp(label: String) = hasText(label) and hasClickAction() and hasAnyAncestor(hasTestTag(AppGridTags.GRID))
+
+    /** Drags by [fraction] of the screen's height (negative is up), then holds still so the release has no speed. */
+    private fun dragAndHold(fraction: Float) = root().performTouchInput {
+        down(center)
+        val steps = 10
+        repeat(steps) { moveBy(Offset(0f, height * fraction / steps)) }
+        moveBy(Offset.Zero, delayMillis = HOLD_MILLIS)
+        up()
+    }
+
+    @Test
+    @Verifies("FR-GRID-01", "FR-GEST-01")
+    fun swipingUpOnHomeOpensTheAppGrid() {
+        launcher.show(launcher(apps, home = apps.take(2)))
+
+        root().performTouchInput { swipeUp(startY = centerY, endY = top + height / 10) }
+        rule.waitForIdle()
+
+        assertEquals(Layer.AppGrid, launcher.state.layer)
+        rule.onNodeWithTag(AppGridTags.SEARCH).assertIsDisplayed()
+        rule.onNode(gridApp("App 01")).assertIsDisplayed()
+    }
+
+    @Test
+    @Verifies("FR-GRID-03")
+    fun theGridOpensAtTheTopWithTheSearchFieldAboveTheFirstRow() {
+        launcher.show(launcher(apps, layer = Layer.AppGrid))
+        rule.onNodeWithTag(AppGridTags.GRID).performTouchInput { swipeUp() }
+        rule.onNodeWithTag(AppGridTags.GRID).performTouchInput { swipeUp() }
+        rule.waitForIdle()
+        rule.onNode(gridApp("App 01")).assertDoesNotExist()
+
+        launcher.dispatch(Action.Back)
+        rule.waitForIdle()
+        root().performTouchInput { swipeUp(startY = centerY, endY = top + height / 10) }
+        rule.waitForIdle()
+
+        val search = rule.onNodeWithTag(AppGridTags.SEARCH).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val first = rule.onNode(gridApp("App 01")).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue(search.bottom <= first.top, "The search field is above the first row: $search, $first")
+    }
+
+    @Test
+    @Verifies("FR-GRID-04")
+    fun draggingDownAtTheTopClosesTheGrid() {
+        launcher.show(launcher(apps, home = apps.take(1), layer = Layer.AppGrid))
+
+        rule.onNodeWithTag(AppGridTags.GRID).performTouchInput { swipeDown(startY = top + height / 5, endY = bottom) }
+        rule.waitForIdle()
+
+        assertEquals(Layer.Home, launcher.state.layer)
+    }
+
+    @Test
+    @Verifies("FR-GRID-04", "FR-GEST-02", "AC-05")
+    fun aShortSlowDragPeeksAndReturnsWhileALongOneCompletes() {
+        launcher.show(launcher(apps, home = apps.take(1)))
+
+        dragAndHold(-0.2f)
+        rule.waitForIdle()
+        assertEquals(Layer.Home, launcher.state.layer, "20% and a slow release return to Home")
+        rule.onNodeWithTag(HomeTags.COVERS).assertIsDisplayed()
+
+        dragAndHold(-0.4f)
+        rule.waitForIdle()
+        assertEquals(Layer.AppGrid, launcher.state.layer, "40% opens the grid")
+
+        dragAndHold(0.2f)
+        rule.waitForIdle()
+        assertEquals(Layer.AppGrid, launcher.state.layer, "20% down peeks and stays open")
+
+        dragAndHold(0.4f)
+        rule.waitForIdle()
+        assertEquals(Layer.Home, launcher.state.layer, "40% down closes")
+    }
+
+    @Test
+    @Verifies("FR-GRID-01", "FR-GEST-04")
+    fun aSwipeThatStartsInASystemGestureAreaIsLeftToTheSystem() {
+        launcher.show(launcher(apps, home = apps.take(1)), gestureInsets = WindowInsets(bottom = GESTURE_AREA))
+
+        root().performTouchInput { swipeUp(startY = bottom - 1f, endY = top + height / 10) }
+        rule.waitForIdle()
+
+        assertEquals(Layer.Home, launcher.state.layer)
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    @Verifies("FR-GEST-09", "NFR-A11Y-02")
+    fun screenReadersOpenTheGridWithoutSwiping() {
+        launcher.show(launcher(apps, home = apps.take(1)))
+
+        rule.onNodeWithTag(HomeTags.SCREEN).performCustomAccessibilityActionWithLabel(context.getString(R.string.action_show_apps))
+        rule.waitForIdle()
+
+        assertEquals(Layer.AppGrid, launcher.state.layer)
+        rule.onNode(gridApp("App 01")).assertIsDisplayed()
+    }
+
+    private companion object {
+        const val HOLD_MILLIS = 300L
+        val GESTURE_AREA = 48.dp
+    }
+}

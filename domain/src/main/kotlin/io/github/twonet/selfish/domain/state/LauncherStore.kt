@@ -144,6 +144,8 @@ class LauncherStore(
             when (effect) {
                 is Effect.LaunchApp -> ports.appCatalog.launch(effect.app, effect.from)
                 is Effect.FinishRun -> effect.run.finished()
+                is Effect.OpenAppInfo -> ports.appCatalog.openAppInfo(effect.app)
+                is Effect.RequestUninstall -> ports.appCatalog.requestUninstall(effect.app)
                 Effect.OfferDefaultHome ->
                     if (!ports.osSettings.isDefaultHome()) ports.osSettings.requestDefaultHome()
                 Effect.ResolveDefaultApps -> dispatch(Action.DefaultAppsResolved(defaultApps()))

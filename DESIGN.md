@@ -184,12 +184,12 @@ app/src/main/kotlin/…/
   SelfishApp.kt   AppGraph.kt   MainActivity.kt
   ui/tokens/      Colors (incl. glass), Type, Spacing, Sizes, Shapes, Motion,
                   LauncherTheme (AR-04, UI-08)
-  ui/motion/      LayerGestureController, springs, reduced motion
+  ui/LauncherScreen.kt  the root: every surface, drawn back to front (§6.2)
+  ui/motion/      LayerGestureController, GestureMath, WindowBlur, reduced motion
   ui/components/  Pressable, LauncherText, Glass, PageHeader, AppIcon, AppIcons, Cover,
-                  PressGlow, PulleyMenu, ContextMenu, RemorseBanner, GestureHint,
-                  ReorderableGrid
+                  FolderIcon, PressGlow, PulleyMenu, ContextMenu, RemorseBanner,
+                  GestureHint, ReorderableGrid
   ui/home/  ui/grid/  ui/folder/  ui/search/  ui/events/  ui/topmenu/
-                  (until #7, ui/grid/ holds only AppListStandIn, the list below Home)
   ui/settings/  ui/wallpaper/  ui/onboarding/
 ```
 
@@ -250,8 +250,10 @@ Overlays: Folder(id) · ContextMenu(target) · PulleyMenu(page) · Keyboard     
 | `LauncherState.firstRun` is true when nothing usable was saved at start. On a first run, once the state is restored *and* the launcher is on screen (`Action.HomeShown`), the reducer emits `Effect.OfferDefaultHome` once per process. The store shows the system prompt only if the launcher isn't the default already. Waiting for the screen matters because the process may have started for the background job, with no Activity to show the prompt over. | FR-GEN-02, FR-ONB-01 |
 | A catalog change reconciles the saved layout (`CatalogReconciler`, §4.2), and closes a context menu whose app is gone. | FR-GEN-06 |
 | Without a saved layout, the first catalog change with apps in it sets `resolvingDefaults` and emits `Effect.ResolveDefaultApps`, once. The store asks `AppCatalog.defaultApps()`, falling back to none if that fails, and dispatches `DefaultAppsResolved`, which builds `LayoutRules.firstRun` while there is still no layout. The savers then write it. A layout that couldn't be *read* also gets a first-run layout, but it is never saved over the unread file (§3.3). | FR-HOME-07, FR-ONB-01 |
-| `Overlay.ContextMenu(target)` is the one open context menu; `target` is a `MenuTarget`: a `Cover(app)` on Home or an `App(app)` in the list of apps (#7 adds folders). Opening one replaces any other. Back, Home, a tap outside (`CloseContextMenu`), a drag, a launch and choosing an item close it. | FR-HOME-05, FR-HOME-06, FR-GRID-06 |
-| `AddToHome`, `RemoveFromHome` and `MoveCover` apply the `LayoutRules` operations and close the menu. `AddToHome` on a full Home changes nothing: the menu already says Home is full. | FR-HOME-05, FR-HOME-06 |
+| `Overlay.ContextMenu(target)` is the one open context menu; `target` is a `MenuTarget`: a `Cover(app)` on Home or an `App(app)` in the App Grid. Folders have no context menu: a long-press only lifts them, and their actions live in their panel (#8). Opening one replaces any other. Back, Home, a tap outside (`CloseContextMenu`), a drag, a launch, choosing an item and moving to another layer close it. | FR-HOME-05, FR-HOME-06, FR-GRID-06 |
+| `AddToHome`, `RemoveFromHome`, `MoveCover`, `MoveGridItem` and `DropOnto` apply the `LayoutRules` operations and close the menu. `AddToHome` on a full Home changes nothing: the menu already says Home is full. | FR-HOME-05, FR-HOME-06, FR-GRID-05, FR-GRID-08 |
+| `OpenAppInfo` and `Uninstall` close the menu and emit `Effect.OpenAppInfo` and `Effect.RequestUninstall`, which the store passes to `AppCatalog`. An uninstall the user confirms arrives later as a catalog change. The menu offers Uninstall only for apps that aren't system apps (`AppEntry.removable`, §5.1). | FR-GRID-06, FR-GRID-09 |
+| `Action.LayerSettled(layer)` is where a released swipe, or the screen reader's "Show apps", ends up (§6.3). On the current layer it changes nothing; otherwise it moves there and closes the overlays, which belong to the layer they were opened on. Hiding the launcher leaves the App Grid open, so Back from an app launched from it returns there; a Home press closes it. | FR-GRID-01, FR-GRID-04, FR-GEN-03 |
 | Closing the App Grid clears the search query and hides the keyboard. | FR-SRCH-05 |
 | `Settings` holds every setting from SRS §4.13, with the SRS defaults (for example Appearance = System, Daily Bing wallpaper = On). | FR-SET-01 to FR-SET-17, FR-THM-02 |
 
@@ -267,9 +269,9 @@ Layout operations are pure functions in `LayoutRules` over `Layout(grid: List<Gr
 | Operation | Rule | Serves |
 |---|---|---|
 | `addToHome`, `removeFromHome` | At most 9 covers. Adding a tenth returns `HomeFull`. | FR-HOME-05 |
-| `moveCover`, `moveItem` | Moves the item and keeps the order of everything else. | FR-HOME-06, FR-GRID-05, FR-GRID-07 |
+| `moveCover`, `moveItem` | Moves the item and keeps the order of everything else. `moveItem` finds apps by `AppId` and folders by `FolderId`, so a folder renamed during a drag is still found. | FR-HOME-06, FR-GRID-05, FR-GRID-07 |
 | `coverColumns(n)` | 1 to 4 covers → 2 columns; 5 to 9 → 3 columns. | FR-HOME-03 |
-| `dropOnto(app, target)` | Creates a `Folder("Folder", [target, app])` at the target's position. | FR-GRID-08, FR-FOLD-01 |
+| `dropOnto(app, target)` | Creates a `Folder("Folder", [target, app])` at the target's position. Only for two different apps that are each on their own in the grid; dropping into or out of a folder is #8's. Home is unchanged: an app in a folder can still be a cover. | FR-GRID-08, FR-FOLD-01 |
 | `addToFolder`, `removeFromFolder` | A folder left with one app dissolves into that app, in the folder's place. | FR-FOLD-05, FR-FOLD-06 |
 | `renameFolder`, `removeFolder` | Removing puts the folder's apps back into the grid at its position. | FR-FOLD-04, FR-FOLD-07 |
 | `sortAlphabetically` | Uses a `java.text.Collator` for the device locale. | FR-SET-10 |
@@ -384,6 +386,7 @@ Each external dependency from AR-03 has exactly one port and one adapter.
 **Implementation notes**
 
 - **App list.** `getActivityList` for every profile, without the launcher's own package. It is queried again after every `LauncherApps.Callback` event, a locale change (names change) and a managed-profile change (FR-GEN-10). A profile that can't be read keeps its last list, or is left out if it was never read: an emptied profile would make the reconciler drop its apps from the layout, and one unreadable profile must not hide the others.
+- **App info and uninstall** (FR-GRID-06). `openAppInfo` calls `startAppDetailsActivity`. `requestUninstall` starts `ACTION_DELETE` for the app's package, with `Intent.EXTRA_USER` for its profile, over the visible launcher so Back returns to it. Each app's `AppEntry.removable` is false for system apps (`FLAG_SYSTEM`), which can't be uninstalled, only have their updates removed; the menu then leaves Uninstall out, as the platform's launcher does.
 - **Icons.** `icon(app, sizePx)` renders off the main thread into an ARGB bitmap of the requested size and returns its pixels as an `AppIconImage`, so the Domain stays free of platform image types (AR-01).
   - An adaptive icon is drawn full-bleed, from its background and foreground layers and without the device's mask, and marked `shaped`. Presentation clips it to the one icon shape (UI-05). Other icons are drawn as they are, keeping their aspect ratio.
   - Apps of another profile get the system's badge (FR-GEN-10) as a separate full-size layer, made by badging a transparent square, so clipping the icon never clips the badge.
@@ -449,7 +452,7 @@ URL building, the allowlist and redirect decision, the counting stream and the J
 | `ACCESS_NETWORK_STATE` | Normal | Metered and Data Saver state (FR-WP-06) |
 | `SET_WALLPAPER` | Normal | Applying the image (FR-WP-01, FR-WP-05) |
 | `RECEIVE_BOOT_COMPLETED` | Normal | Keeps the wallpaper job across reboots (FR-WP-02) |
-| `REQUEST_DELETE_PACKAGES` | Normal | Required for apps targeting API 28+ to open the system uninstall confirmation (FR-GRID-06) |
+| `REQUEST_DELETE_PACKAGES` | Normal | Required for apps targeting API 28+ to open the system uninstall confirmation (FR-GRID-06). Declared in the `:adapters` manifest, next to `LauncherAppsCatalog`. |
 | `PACKAGE_USAGE_STATS` | Special access, granted by the user | Recently used covers only (FR-HOME-10, optional) |
 | `EXPAND_STATUS_BAR` | Normal | Only if FR-TOP-07 ships (R-2) |
 
@@ -499,18 +502,19 @@ Each layer's position is a single `Animatable<Float>` progress from 0 to 1, owne
 
 ### 6.3 Gesture and motion (AR-04)
 
-One `LayerGestureController` in `ui/motion/` drives every view transition.
+One `LayerGestureController` in `ui/motion/` drives every view transition. #7 builds it for the Home ⇄ App Grid axis; Events (#10) and the Top Menu (#11) add theirs.
 
 | Behavior | Implementation | Serves |
 |---|---|---|
-| Recognition | Track from touch-down outside system gesture insets. Once movement passes the platform touch slop, lock to the dominant axis. From Home: up opens the App Grid, down opens the Top Menu, sideways opens Events. | FR-GRID-01, FR-EVT-01, FR-TOP-01, FR-GEST-04 |
+| Recognition | `Modifier.layerGestures` on the root, which never moves, watches each touch in the Initial pass, before the elements under it. A touch that starts outside the system gesture insets, on a resting layer, is taken over once it passes the platform touch slop *before* the long-press timeout, locked to its dominant axis, in a direction the layer owns. From Home: up opens the App Grid (unless Home's covers can still scroll), down opens the Top Menu, sideways opens Events. Until then, taps, scrolling and long-presses reach the elements as usual; a long-pressed item keeps its touch for dragging. Taking over at the root, rather than through nested scrolling, keeps distances and the release velocity in screen coordinates while the surfaces slide. | FR-GRID-01, FR-EVT-01, FR-TOP-01, FR-GEST-04 |
 | Tracking | Progress = drag distance ÷ layer travel, 1:1 from recognition. | FR-GEST-01 |
 | Release | Complete if progress ≥ 0.30, or if the release velocity toward the target is at least the platform minimum fling velocity. Otherwise return to the start (peek). | FR-GEST-02, AC-05 |
 | Settling | `spring(dampingRatio = 1f)`, which is critically damped, seeded with the release velocity. | §4.9 tokens |
 | Interruption | Touching during a settle stops the `Animatable` and continues the drag from its current value. | FR-GEST-03 |
-| App Grid close | Through nested scrolling: while the grid is at the top, a downward drag goes to the controller instead of the list. | FR-GRID-04 |
+| App Grid close | The same take-over: while the grid can't scroll back any further, a downward swipe goes to the controller instead of the list. | FR-GRID-04 |
+| Layer changes from the store | When the store changes the layer, for example on a Home or Back press, the controller animates there. A Home press that brings the launcher back from another app arrives before its window has focus; then it jumps, so the grid isn't seen closing. | FR-GEN-03, FR-GEN-04 |
 | Events | Sideways swipes that start on a dismissible notification go to that notification instead. | FR-EVT-05 |
-| Dim and blur | Follow App Grid progress. | FR-ANIM-01 |
+| Dim and blur | Follow App Grid progress. Home slides up out of the way as the grid slides in, as one sheet. | FR-ANIM-01 |
 | Reduced motion | When the system animator scale is 0 or Animations is set to Reduced, settles and enter/exit animations become snaps or fades of at most 100 ms. Drags still follow the finger. | FR-ANIM-15, NFR-A11Y-05 |
 
 The release decision, direction lock and pull-depth mapping are pure functions (`GestureMath`), unit-tested on the JVM. Thresholds, durations, easings and springs are defined once, in `ui/tokens/Motion.kt`.
@@ -521,8 +525,9 @@ The release decision, direction lock and pull-depth mapping are pure functions (
 |---|---|---|
 | `PulleyMenu` | Overscroll at the top of a page becomes pull distance, with rubber-band resistance. The item index = (pull − first offset) ÷ item spacing. Each change of index plays a tick haptic (`CLOCK_TICK`, or `SEGMENT_TICK` on API 34+). Releasing selects the item, which flashes in the highlight color. A subtle indicator at the top shows that the menu exists. | FR-GEST-05, FR-ANIM-09 |
 | `ContextMenu` | A full-width item inserted after the pressed item's row. `animateItem()` pushes later rows down. Dragging the lifted icon closes the menu and starts a move. When it opens below the visible rows, its list scrolls just enough to show it. A disabled item explains itself, as "Add to Home" does on a full Home. `Modifier.onUnhandledTap` closes it on a tap that nothing else handled. | FR-GRID-06, FR-ANIM-08, FR-HOME-05 |
-| `ReorderableGrid` | Long-press lifts the item to 110% with a shadow, and the other items reflow with `animateItem()`. The order while dragging is transient; only the drop reaches the store, as the item's new index. The lifted item's context menu is a full-span item after its row. *Built in #6 for Home's covers.* #7 adds auto-scrolling near the edges and dropping onto the center of an app to create a folder. This is owned code, because the rules are launcher-specific (§7). | FR-HOME-06, FR-GRID-05, FR-GRID-07, FR-GRID-08, FR-ANIM-05, FR-ANIM-06 |
+| `ReorderableGrid` | Long-press lifts the item to 110% with a shadow, and the other items reflow with `animateItem()`. The order while dragging is transient; only the drop reaches the store, as the item's new index. The lifted item's context menu is a full-span item after its row. *Built in #6 for Home's covers;* #7 added, for the App Grid: a fixed full-width first row (the search field); auto-scrolling while the dragged item is within 64 dp of the top or bottom, faster the deeper it is, with its slot following the finger and the item pinned so it stays composed; and, where the caller allows it, dropping onto the central half of another item. There the target grows to show it will take the drop; around that center, the dragged item takes the other's place only after resting for 250 ms, so passing over an app doesn't push it away. This is owned code, because the rules are launcher-specific (§7). | FR-HOME-06, FR-GRID-05, FR-GRID-07, FR-GRID-08, FR-ANIM-05, FR-ANIM-06 |
 | `Cover` | A portrait glass card with the app's icon and name, read as the app's name. | FR-HOME-03, NFR-A11Y-01 |
+| `FolderIcon` | A glass square the size of an app icon, previewing a folder's first four apps two by two. Decorative; the folder's tile reads "Folder, ⟨name⟩, ⟨n⟩ apps". | FR-GRID-02, FR-FOLD-02, NFR-A11Y-01 |
 | `RemorseBanner` | Shows the action's label and a bar that shrinks toward the deadline held in state. Tapping it dispatches `CancelRemorse`, and the affected item animates back. | FR-GEST-06, FR-ANIM-12 |
 | `Modifier.pressable` | The only way to handle taps and long-presses. It keeps every touch target at least 48 × 48 dp and uses `LocalIndication`, so `PressGlow` reaches every element. With a `LiftDrag`, a long-press lifts the element and the same touch drags it (`detectDragGesturesAfterLongPress`, inside the clickable so it takes the release); screen readers get the lift as the long-click action. | UI-06, FR-ANIM-04, FR-HOME-06 |
 | `LauncherText` | Text in one of the four roles (display, header, body, label) at primary or secondary emphasis. It takes no color, so body text can't be drawn in the highlight. | UI-04, FR-AMB-04 |
@@ -582,8 +587,8 @@ The release decision, direction lock and pull-depth mapping are pure functions (
   3. The overlay fades out over Ambient (800 ms).
   - If the outgoing wallpaper wasn't set by the launcher, it isn't cached, and the change is instant.
 - **Blur and dim** (FR-GRID-01, NFR-COMP-03).
-  - On API 31+, while cross-window blur is available, the window's blur-behind radius follows App Grid progress. Availability is checked with `WindowManager.isCrossWindowBlurEnabled` and observed with `addCrossWindowBlurEnabledListener`.
-  - Otherwise, a stronger dim is used instead. That covers API 29–30, Battery Saver and devices without blur support.
+  - On API 31+, while cross-window blur is available, the window's background blur radius (`Window.setBackgroundBlurRadius`) follows App Grid progress, up to 32 dp (`ui/motion/WindowBlur`). Availability is checked with `WindowManager.isCrossWindowBlurEnabled` and observed with `addCrossWindowBlurEnabledListener`.
+  - Otherwise the dim alone shows. That covers API 29–30, Battery Saver and devices without blur support. #26 makes it stronger there (NFR-COMP-03).
   - See R-1.
 - **Parallax** (FR-ANIM-14, C). Moving between Home and Events sets wallpaper offsets through `SystemWallpaper`.
 
@@ -591,7 +596,7 @@ The release decision, direction lock and pull-depth mapping are pure functions (
 
 | Feature | Implementation | Serves |
 |---|---|---|
-| Gesture alternatives | Home exposes custom accessibility actions: "Show apps", "Show events" and "Show top menu". Each pulley menu exposes its items as custom actions on its page header. The remorse banner is a button labeled "Cancel ⟨action⟩" and is announced through a live region. | FR-GEST-09, NFR-A11Y-02, AC-10 |
+| Gesture alternatives | Home exposes custom accessibility actions: "Show apps" (built in #7), "Show events" and "Show top menu". Each pulley menu exposes its items as custom actions on its page header. The remorse banner is a button labeled "Cancel ⟨action⟩" and is announced through a live region. | FR-GEST-09, NFR-A11Y-02, AC-10 |
 | Labels | Covers and icons read the app's name. Folders read "Folder, ⟨name⟩, ⟨n⟩ apps". | NFR-A11Y-01 |
 | Large text | Grid labels can wrap to two lines at large font scales. Layouts are tested at the largest system font scale for overflow. | FR-GRID-02, NFR-A11Y-04 |
 | Contrast | §6.5 | NFR-A11Y-03 |
@@ -693,7 +698,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 |---|---|---|
 | FR-GEN-01 | U, R | `ManifestRulesTest`: label and adaptive icon. Name and original icon appear in the app list, the Home chooser and About. |
 | FR-GEN-02 | U, I | `LauncherReducerTest`, `LauncherStoreTest`: the offer. `ManifestRulesTest`: the Home filter. `SystemIntegrationTest`: first launch while not the default Home app shows the role prompt. |
-| FR-GEN-03, FR-GEN-04 | U, I | `LauncherReducerTest`: Back and Home order. `SystemIntegrationTest`: Home and Back on Home; with layers open once #7, #10 and #11 add them. |
+| FR-GEN-03, FR-GEN-04 | U, I | `LauncherReducerTest`: Back and Home order. `SystemIntegrationTest`: Home and Back on Home, and with the App Grid open; with Events and the Top Menu once #10 and #11 add them. |
 | FR-GEN-05 | U | `LauncherReducerTest`, `LauncherStoreTest`: launch guard. |
 | FR-GEN-06 | U, A, R | `CatalogReconcilerTest`. `LauncherAppsCatalogTest`: enabling and disabling a stub activity, and every launchable app is listed (R-4). Review item: real installs, updates and uninstalls. |
 | FR-GEN-07 | U, A | `PersistenceTest`: round trip and migrations. `FileStorageTest`: atomic writes. |
@@ -713,9 +718,10 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 
 | Requirements | Level | Verified by |
 |---|---|---|
-| FR-GRID-01, FR-GRID-03, FR-GRID-04 | I | `NavigationTest`: swipe up opens the grid scrolled to the top; dragging down at the top closes it, with peek-cancel. |
-| FR-GRID-02, FR-GRID-06, FR-GRID-07 | I | `AppGridTest`: 3, 4 and 5 columns; label lines; context-menu contents and uninstall intent; reflow and auto-scroll. |
-| FR-GRID-05, FR-GRID-08, FR-GRID-09 | U, I | `LayoutRulesTest`, `CatalogReconcilerTest`. `AppGridTest`: dropping on an app creates a folder. |
+| FR-GRID-01, FR-GRID-03, FR-GRID-04 | U, I | `LauncherReducerTest`: settling on a layer. `NavigationTest`: swipe up opens the grid scrolled to the top, under the search field; dragging down at the top closes it, with peek-cancel; swipes from the system gesture areas are ignored. `SystemIntegrationTest`: Back and Home close it. |
+| FR-GRID-02, FR-GRID-06, FR-GRID-07 | U, A, I | `AppGridTest`: 3, 4 and 5 columns; one-line and two-line labels; context-menu contents, with Uninstall hidden for system apps; reordering and auto-scroll. `LauncherAppsCatalogTest`: app info and uninstall open the system's screens, and which apps are removable. `LauncherStoreTest`: the effects reach the catalog. |
+| FR-GRID-05, FR-GRID-08, FR-GRID-09 | U, I | `LayoutRulesTest`, `CatalogReconcilerTest`. `AppGridTest`: dropping on an app creates a folder; an uninstalled app leaves no gap. |
+| FR-GRID-10, FR-GRID-11 | — | Could; deferred. Shortcuts in the menu share their plumbing with cover quick actions (FR-HOME-09), and notification dots need the Settings page (#18) and the access flow (#19). |
 
 **Folders (SRS §4.4)**
 
@@ -919,7 +925,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 | AC-04 | U, I | `WallpaperPolicyTest`: 3 days of failures in virtual time. `WallpaperDetailsTest`: last update shown. |
 | AC-05 | I | `NavigationTest`. |
 | AC-06 | I | `EventsTest`. |
-| AC-07 | I | `AppGridTest` with UiAutomator installing a test APK. |
+| AC-07 | I, R | `AppGridTest`: a catalog change while the grid is scrolled keeps every item where it is and adds the new app at the end. A real install is a review item. |
 | AC-08 | I | `FolderTest`. |
 | AC-09 | I | `NavigationTest` with the animator scale at 0. |
 | AC-10 | I | `AccessibilityTest`. |
@@ -936,7 +942,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 
 | ID | Risk | Mitigation |
 |---|---|---|
-| R-1 | Window blur-behind may need a translucent window, and changing its radius on every frame may drop frames (NFR-PERF-02). The official blur guide could not be checked while writing this design. | A spike in the first UI milestone, measured with `FrameTimingBenchmark`. If it falls short, set the blur only at rest (closed or open) and animate only the dim. Dim-only is already the fallback (NFR-COMP-03). |
+| R-1 | Window blur-behind may need a translucent window, and changing its radius on every frame may drop frames (NFR-PERF-02). The official blur guide could not be checked while writing this design. | A spike in the first UI milestone, measured with `FrameTimingBenchmark`. If it falls short, set the blur only at rest (closed or open) and animate only the dim. Dim-only is already the fallback (NFR-COMP-03). **Spike (#7):** the blur follows progress through `Window.setBackgroundBlurRadius`, with the window left opaque. On the Galaxy S22 (One UI, Android 16) the platform reports cross-window blur as disabled, so the grid shows the dim alone there, and the blur path is still unchecked on hardware. Still open: check it on a device that supports cross-window blur, such as a Pixel, with `FrameTimingBenchmark` (#20). |
 | R-2 | FR-TOP-07 (Could) can only open the notification shade through a non-SDK interface (`StatusBarManager.expandNotificationsPanel` with `EXPAND_STATUS_BAR`), which future Android versions may block. | Ship the setting only if it works on the target API level. Otherwise hide it. No M or S requirement depends on it. |
 | R-3 | The Bing feed is undocumented, and its terms of use are unclear (Q-3, A-1). | All Bing knowledge is confined to `adapters/bing`. The launcher keeps working from its cache (FR-WP-11). If legal review requires, the feature can ship turned off. |
 | R-4 | The Android documentation doesn't say whether `LauncherApps.getActivityList` is filtered by package visibility for apps without `QUERY_ALL_PACKAGES`. | `LauncherAppsCatalogTest` (#5), run on an API 30+ device, compares the result, with only the `<queries>` block of §5.6, against `cmd package query-activities` for `MAIN`/`LAUNCHER`. If apps are missing, add `QUERY_ALL_PACKAGES`, justify it (a launcher must see all launchable apps) and update §5.6 and `checkPermissions`. **Result (#5):** passed on API 36 (Galaxy S22, Android 16): every launchable app is listed, so `QUERY_ALL_PACKAGES` isn't needed. |
@@ -963,7 +969,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 
 1. **Scaffold the project.** Replace `Cargo.toml`, `Cargo.lock` and `src/` with the Gradle project of §3: `:domain`, `:adapters`, `:app` and `:benchmark`, a version catalog and an Android `.gitignore`. *Done in issue #2, except `:benchmark`, which arrives with the performance work (#20).*
 2. **Add the build checks** of §8.2: `checkTraceability`, `checkDependencies`, `checkPermissions` and `checkApkSize`. *`checkDependencies` and Lint are done (#2); the others come with #27, #23 and #20.*
-3. **Run spikes R-1 (blur) and R-4 (package visibility)** before building the UI on top of them. *R-4 is done (#5, `LauncherAppsCatalogTest`): the `<queries>` block is enough.*
+3. **Run spikes R-1 (blur) and R-4 (package visibility)** before building the UI on top of them. *R-4 is done (#5, `LauncherAppsCatalogTest`): the `<queries>` block is enough. R-1 is built (#7) but unmeasured: the reference S22 has no cross-window blur.*
 4. **Create `REVIEW-CHECKLIST.md`** from the R rows of §8.3 and §8.4. *Started in #2 with the architecture items; each feature issue adds its own.*
 5. **Add the CI workflow** of §8.5.
 

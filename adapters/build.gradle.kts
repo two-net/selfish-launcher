@@ -46,4 +46,6 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.kotlin.test)
+    // Checks that app info and uninstall bring up the system's screens.
+    androidTestImplementation(libs.androidx.test.uiautomator)
 }

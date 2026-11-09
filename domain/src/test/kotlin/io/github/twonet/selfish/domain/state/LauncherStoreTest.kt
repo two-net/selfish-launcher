@@ -111,6 +111,19 @@ class LauncherStoreTest {
     }
 
     @Test
+    @Verifies("FR-GRID-06")
+    fun `app info and uninstall reach the app catalog`() = runTest {
+        val store = startedStore()
+
+        store.dispatch(Action.OpenAppInfo(maps.id))
+        store.dispatch(Action.Uninstall(maps.id))
+        runCurrent()
+
+        assertEquals(listOf(maps.id), catalog.openedAppInfo)
+        assertEquals(listOf(maps.id), catalog.uninstallRequests)
+    }
+
+    @Test
     @Verifies("FR-GEN-05")
     fun `a launch blocks further launches until it times out`() = runTest {
         val store = startedStore()

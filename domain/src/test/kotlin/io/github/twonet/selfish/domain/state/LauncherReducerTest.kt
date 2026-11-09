@@ -390,6 +390,83 @@ class LauncherReducerTest {
         assertEquals(emptyList(), next.layout!!.home)
     }
 
+    // App Grid (FR-GRID-01, FR-GRID-04 to FR-GRID-09)
+
+    private val gridMenu = Overlay.ContextMenu(MenuTarget.App(maps.id))
+
+    @Test
+    @Verifies("FR-GRID-01", "FR-GRID-04")
+    fun `a settled swipe moves to its layer and closes the menu of the one it left`() {
+        val opened = reduce(homeState.copy(overlays = listOf(coverMenu)), Action.LayerSettled(Layer.AppGrid)).state
+
+        assertEquals(homeState.copy(layer = Layer.AppGrid), opened)
+
+        val closed = reduce(opened.copy(overlays = listOf(gridMenu)), Action.LayerSettled(Layer.Home)).state
+        assertEquals(homeState, closed)
+
+        val open = homeState.copy(layer = Layer.AppGrid, overlays = listOf(gridMenu))
+        assertSame(open, reduce(open, Action.LayerSettled(Layer.AppGrid)).state, "Settling where it already is changes nothing")
+    }
+
+    @Test
+    @Verifies("FR-GEN-03", "FR-GEN-04")
+    fun `back closes the App Grid's menu, then the grid, and Home closes both at once`() {
+        val open = homeState.copy(layer = Layer.AppGrid, overlays = listOf(gridMenu))
+
+        val back = reduce(open, Action.Back).state
+        assertEquals(homeState.copy(layer = Layer.AppGrid), back)
+        assertEquals(homeState, reduce(back, Action.Back).state)
+        assertEquals(homeState, reduce(open, Action.HomePressed).state)
+    }
+
+    @Test
+    @Verifies("FR-GRID-05", "FR-GRID-07")
+    fun `dropping a grid item moves it and closes the menu`() {
+        val next = reduce(homeState.copy(layer = Layer.AppGrid, overlays = listOf(gridMenu)), Action.MoveGridItem(GridItem.App(clock.id), 1)).state
+
+        assertEquals(listOf(GridItem.App(maps.id), GridItem.App(clock.id)), next.layout!!.grid)
+        assertEquals(emptyList(), next.overlays)
+    }
+
+    @Test
+    @Verifies("FR-GRID-08", "FR-FOLD-01")
+    fun `dropping an app onto another makes a folder`() {
+        val next = reduce(homeState.copy(layer = Layer.AppGrid), Action.DropOnto(clock.id, maps.id)).state
+
+        assertEquals(listOf<GridItem>(GridItem.Folder(FolderId(1), apps = listOf(maps.id, clock.id))), next.layout!!.grid)
+        assertEquals(
+            listOf<GridCell>(GridCell.Folder(next.layout.grid.single() as GridItem.Folder, listOf(maps, clock))),
+            next.gridCells,
+        )
+    }
+
+    @Test
+    @Verifies("FR-GRID-06")
+    fun `app info and uninstall close the menu and ask the system`() {
+        val open = homeState.copy(layer = Layer.AppGrid, overlays = listOf(gridMenu))
+
+        val info = reduce(open, Action.OpenAppInfo(maps.id))
+        assertEquals(homeState.copy(layer = Layer.AppGrid), info.state)
+        assertEquals(listOf<Effect>(Effect.OpenAppInfo(maps.id)), info.effects)
+
+        val uninstall = reduce(open, Action.Uninstall(maps.id))
+        assertEquals(homeState.copy(layer = Layer.AppGrid), uninstall.state)
+        assertEquals(listOf<Effect>(Effect.RequestUninstall(maps.id)), uninstall.effects)
+    }
+
+    @Test
+    @Verifies("FR-GRID-02")
+    fun `grid cells are the grid's items in order, once the catalog knows their apps`() {
+        val unknown = app("Unknown").id
+        val folder = GridItem.Folder(FolderId(3), "Tools", listOf(unknown, clock.id))
+        val state = homeState.copy(
+            layout = Layout(grid = listOf(GridItem.App(maps.id), GridItem.App(unknown), folder, GridItem.Folder(FolderId(4), apps = listOf(unknown)))),
+        )
+
+        assertEquals(listOf(GridCell.App(maps), GridCell.Folder(folder, listOf(clock))), state.gridCells)
+        assertEquals(emptyList(), LauncherState().gridCells)
+    }
+
     @Test
     @Verifies("FR-HOME-02")
     fun `the clock is kept in the state`() {

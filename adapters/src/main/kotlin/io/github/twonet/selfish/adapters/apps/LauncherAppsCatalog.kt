@@ -6,6 +6,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ApplicationInfo
 import android.content.pm.LauncherActivityInfo
 import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
@@ -163,6 +164,10 @@ class LauncherAppsCatalog internal constructor(
                     id = AppId(component.packageName, component.className, serial),
                     label = info.label.toString(),
                     version = versions[PackageKey(component.packageName, user)] ?: 0L,
+                    // System apps can't be uninstalled, only have their
+                    // updates removed, so the menu doesn't offer it
+                    // (FR-GRID-06), as the platform's launcher does.
+                    removable = info.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM == 0,
                 )
             }
     }
@@ -281,12 +286,35 @@ class LauncherAppsCatalog internal constructor(
         null
     }
 
-    // The members below are filled in by #7 and, for shortcuts, with
-    // FR-HOME-09 and FR-GRID-10.
+    /** The system's app-info screen for [app], growing from nothing (FR-GRID-06). */
+    override suspend fun openAppInfo(app: AppId) {
+        val user = userManager.getUserForSerialNumber(app.userSerial) ?: return
+        withContext(Dispatchers.Main) {
+            launcherApps.startAppDetailsActivity(ComponentName(app.packageName, app.activityName), user, null, null)
+        }
+    }
 
-    override suspend fun openAppInfo(app: AppId) = Unit
+    /**
+     * The system's uninstall confirmation for [app], for its own profile
+     * (FR-GRID-06). Started over the visible launcher when there is one,
+     * so Back returns to it; needs `REQUEST_DELETE_PACKAGES` (DESIGN §5.6).
+     * The removal itself arrives as a catalog change (FR-GRID-09).
+     */
+    override suspend fun requestUninstall(app: AppId) {
+        val user = userManager.getUserForSerialNumber(app.userSerial) ?: return
+        val intent = Intent(Intent.ACTION_DELETE, Uri.fromParts("package", app.packageName, null))
+            .putExtra(Intent.EXTRA_USER, user)
+        withContext(Dispatchers.Main) {
+            val activity = foreground.current
+            if (activity != null) {
+                activity.startActivity(intent)
+            } else {
+                appContext.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+        }
+    }
 
-    override suspend fun requestUninstall(app: AppId) = Unit
+    // Shortcuts arrive with FR-HOME-09 and FR-GRID-10 (both Could, deferred).
 
     override suspend fun shortcuts(app: AppId): List<AppShortcut> = emptyList()
 

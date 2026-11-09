@@ -11,6 +11,12 @@ sealed interface Effect {
 
     data class FinishRun(val run: ScheduledRun) : Effect
 
+    /** Opens the system's app-info screen for [app] (FR-GRID-06). */
+    data class OpenAppInfo(val app: AppId) : Effect
+
+    /** Opens the system's uninstall confirmation for [app] (FR-GRID-06). */
+    data class RequestUninstall(val app: AppId) : Effect
+
     /** Shows the system's default-Home prompt, unless the launcher already is the default (FR-GEN-02). */
     data object OfferDefaultHome : Effect
 

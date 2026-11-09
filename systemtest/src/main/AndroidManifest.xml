@@ -1,2 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Lets the tests read the launcher's strings, so they find its
+         elements in any language. -->
+    <queries>
+        <package android:name="io.github.twonet.selfish" />
+    </queries>
+
+</manifest>

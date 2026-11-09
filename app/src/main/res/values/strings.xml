@@ -9,4 +9,17 @@
     <string name="menu_home_full">Home is full. Remove a cover to make room.</string>
     <!-- The screen-reader action for a long-press, which opens an item's context menu. -->
     <string name="action_open_menu">Open menu</string>
+    <!-- The screen-reader action on Home that opens the App Grid instead of swiping up (FR-GEST-09). -->
+    <string name="action_show_apps">Show apps</string>
+
+    <!-- App Grid (SRS §4.3) -->
+    <string name="menu_app_info">App info</string>
+    <string name="menu_uninstall">Uninstall</string>
+    <!-- The search field above the first row; search itself arrives with #9. -->
+    <string name="grid_search_placeholder">Search apps</string>
+    <!-- How screen readers read a folder in the App Grid (NFR-A11Y-01): its name, then how many apps it holds. -->
+    <plurals name="folder_description">
+        <item quantity="one">Folder, %1$s, %2$d app</item>
+        <item quantity="other">Folder, %1$s, %2$d apps</item>
+    </plurals>
 </resources>

@@ -34,13 +34,17 @@ sealed interface Overlay {
     data class ContextMenu(val target: MenuTarget) : Overlay
 }
 
-/** What a context menu belongs to. The App Grid (#7) adds folders. */
+/**
+ * What a context menu belongs to. Only apps have one: a folder in the App
+ * Grid is lifted and moved without a menu, and its own actions live in its
+ * panel (#8).
+ */
 sealed interface MenuTarget {
     val app: AppId
 
     /** A cover on Home (FR-HOME-05, FR-HOME-06). */
     data class Cover(override val app: AppId) : MenuTarget
 
-    /** An app in the list of all apps (FR-HOME-05, FR-GRID-06). */
+    /** An app in the App Grid (FR-HOME-05, FR-GRID-06). */
     data class App(override val app: AppId) : MenuTarget
 }
