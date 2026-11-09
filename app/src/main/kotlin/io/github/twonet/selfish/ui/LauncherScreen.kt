@@ -3,7 +3,10 @@ package io.github.twonet.selfish.ui
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.systemGestures
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -17,6 +20,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
@@ -32,7 +36,11 @@ import androidx.compose.ui.semantics.semantics
 import io.github.twonet.selfish.R
 import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.Layer
+import io.github.twonet.selfish.domain.remorse.Destructive
+import io.github.twonet.selfish.domain.remorse.REMORSE_DELAY
 import io.github.twonet.selfish.domain.state.LauncherState
+import io.github.twonet.selfish.domain.state.openFolder
+import io.github.twonet.selfish.ui.components.RemorseBanner
 import io.github.twonet.selfish.ui.components.onUnhandledTap
 import io.github.twonet.selfish.ui.grid.AppGrid
 import io.github.twonet.selfish.ui.home.HomeScreen
@@ -40,19 +48,22 @@ import io.github.twonet.selfish.ui.motion.LayerGestureController
 import io.github.twonet.selfish.ui.motion.WindowBlur
 import io.github.twonet.selfish.ui.motion.layerGestures
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
+import io.github.twonet.selfish.ui.tokens.Spacing
 import kotlinx.coroutines.flow.filter
 
 /**
  * Every launcher surface, rendered from [state]; every touch goes back as an
  * action (AR-02). Drawn back to front over the system wallpaper (DESIGN
- * §6.2): the dim and blur, Home, then the App Grid.
+ * §6.2): the dim and blur, Home, the App Grid with its folders, then the
+ * remorse banner, over everything (FR-GEST-06).
  *
  * Swiping up on Home slides the App Grid up over a wallpaper that dims (and,
  * where supported, blurs) in proportion, while Home moves up out of the
  * way, as one sheet (FR-GRID-01, FR-ANIM-01). Dragging down with the grid at
  * its top brings Home back (FR-GRID-04). Swipes that start in
  * [gestureInsets], the system's gesture areas, are left to the system
- * (FR-GEST-04); tests pass their own.
+ * (FR-GEST-04); tests pass their own. While a folder is open, swipes are
+ * the folder's (FR-FOLD-07).
  */
 @Composable
 fun LauncherScreen(
@@ -97,6 +108,7 @@ fun LauncherScreen(
     }
 
     val closeMenu = remember { { currentDispatch(Action.CloseContextMenu) } }
+    val folderOpen by rememberUpdatedState(state.openFolder != null)
     val showApps = stringResource(R.string.action_show_apps)
     val dim = LauncherTheme.colors.dim
 
@@ -112,6 +124,7 @@ fun LauncherScreen(
                 ignored = gestureInsets,
                 homeScrolls = { covers.canScrollForward },
                 gridScrolls = { grid.canScrollBackward },
+                paused = { folderOpen },
             )
             .onUnhandledTap(closeMenu)
             .testTag(LauncherTags.ROOT),
@@ -149,10 +162,29 @@ fun LauncherScreen(
                     .then(if (closed) Modifier.clearAndSetSemantics {} else Modifier),
             )
         }
+        val remorse = state.remorse
+        if (remorse != null) {
+            val label = when (remorse.action) {
+                is Destructive.RemoveFolder -> stringResource(R.string.remorse_remove_folder)
+            }
+            RemorseBanner(
+                label = label,
+                cancelLabel = stringResource(R.string.remorse_cancel, label),
+                number = remorse.number,
+                duration = REMORSE_DELAY,
+                onCancel = { dispatch(Action.CancelRemorse) },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(Spacing.Gutter)
+                    .testTag(LauncherTags.REMORSE),
+            )
+        }
     }
 }
 
 /** Test tags for [LauncherScreen]'s instrumented tests. */
 internal object LauncherTags {
     const val ROOT = "launcher"
+    const val REMORSE = "remorse-banner"
 }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridItemInfo
@@ -32,7 +33,10 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LocalPinnableContainer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.toOffset
 import androidx.compose.ui.unit.toSize
@@ -68,8 +72,21 @@ import kotlinx.coroutines.launch
  * for [Motion.REORDER_DWELL_MILLIS], so passing over it on the way doesn't
  * push it away.
  *
+ * A drag can be handed from one grid to another through a shared
+ * [handoff], as an app is dragged out of a folder's panel into the App Grid
+ * (FR-FOLD-05). The grid that gives the drag away has [onHandOff]: once the
+ * dragged item's center leaves [handOffOutside], a rectangle in the window,
+ * it hides the item, calls [onHandOff] with its center in the window, and
+ * forwards the rest of the touch. It keeps the item composed meanwhile, so
+ * the touch stays with it; its caller must keep showing it while
+ * [DragHandoff.holding]. The grid that receives it has the [handoff] alone:
+ * once an item with the handed-off key is among its [items], it lifts it
+ * under the finger, and the drag carries on there as if it had started
+ * there.
+ *
  * [header], if given, is a full-width first row that never moves, such as
- * the App Grid's search field. [key] must be unique and stable.
+ * the App Grid's search field. [key] must be unique and stable, and the same
+ * for the same thing in two grids that hand drags to each other.
  */
 @Composable
 fun <T> ReorderableGrid(
@@ -88,6 +105,9 @@ fun <T> ReorderableGrid(
     liftShape: Shape = Shapes.Glass,
     contentPadding: PaddingValues = PaddingValues(),
     gridState: LazyGridState = rememberLazyGridState(),
+    handoff: DragHandoff? = null,
+    onHandOff: ((item: T, centerInWindow: Offset) -> Unit)? = null,
+    handOffOutside: () -> Rect = { Rect.Zero },
     itemContent: @Composable (item: T, liftDrag: LiftDrag) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -95,12 +115,22 @@ fun <T> ReorderableGrid(
     val keys = items.map(key)
     val slop = LocalViewConfiguration.current.touchSlop
     val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    // Slots are measured from the end of the top and start padding.
+    val padding = with(density) {
+        Offset(contentPadding.calculateStartPadding(direction).toPx(), contentPadding.calculateTopPadding().toPx())
+    }
+    val headerItems = if (header != null) 1 else 0
     SideEffect {
         drag.keys = keys
         drag.slop = slop
         drag.edge = with(density) { Sizes.AutoScrollEdge.toPx() }
         drag.speed = with(density) { Sizes.AutoScrollSpeed.toPx() }
+        drag.padding = padding
+        drag.handoff = handoff
+        drag.handOffOutside = if (onHandOff != null) handOffOutside else null
         val byKey = { k: String -> items.firstOrNull { key(it) == k } }
+        drag.onHandOff = { k, at -> byKey(k)?.let { onHandOff?.invoke(it, at) } }
         drag.onLift = { k -> byKey(k)?.let(onLift) }
         drag.onDragStart = onDragStart
         drag.onMove = { k, to -> byKey(k)?.let { onMove(it, to) } }
@@ -118,6 +148,19 @@ fun <T> ReorderableGrid(
     // The store has taken the drop, or the items changed: show them as they are.
     LaunchedEffect(keys) { if (drag.dragged == null) drag.order = null }
 
+    // Receiving: lift the handed-off item once it is here (FR-FOLD-05).
+    if (handoff != null && onHandOff == null) {
+        DisposableEffect(handoff, drag) {
+            val nearest = drag::indexNear
+            handoff.nearest = nearest
+            onDispose { if (handoff.nearest == nearest) handoff.nearest = null }
+        }
+        val incoming = handoff.incoming
+        LaunchedEffect(incoming, keys) {
+            if (incoming != null && incoming.key in keys) drag.adopt(incoming.key, incoming.center, headerItems)
+        }
+    }
+
     val shown = drag.shown(items, key)
     val menuKey = menuFor?.let(key)
     val entries = buildList {
@@ -134,7 +177,7 @@ fun <T> ReorderableGrid(
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
-        modifier = modifier,
+        modifier = modifier.onGloballyPositioned { drag.position = it.positionInWindow() },
         state = gridState,
         contentPadding = contentPadding,
         horizontalArrangement = Arrangement.spacedBy(Spacing.Medium),
@@ -158,6 +201,8 @@ fun <T> ReorderableGrid(
                     val itemKey = entry.key
                     val moving = itemKey == drag.dragged || itemKey == drag.settling
                     val lifted = itemKey == drag.dragged || itemKey == menuKey || itemKey == drag.dropTarget
+                    // Handed to another grid, which draws it now.
+                    val gone = itemKey == drag.handedOff
                     val scale by animateFloatAsState(if (lifted) Motion.LIFT_SCALE else 1f, Motion.reflow(), label = "lift")
                     if (itemKey == drag.dragged) {
                         // Stays composed while auto-scrolling carries its slot out of view.
@@ -177,9 +222,11 @@ fun <T> ReorderableGrid(
                                 fadeOutSpec = Motion.reflow(),
                             )
                             .graphicsLayer {
+                                if (itemKey == drag.dragged) drag.draggedScale = scale
                                 val offset = drag.offsetOf(itemKey)
                                 translationX = offset.x
                                 translationY = offset.y
+                                alpha = if (gone) 0f else 1f
                                 scaleX = scale
                                 scaleY = scale
                                 shadowElevation = elevation * ((scale - 1f) / (Motion.LIFT_SCALE - 1f)).coerceIn(0f, 1f)
@@ -190,6 +237,87 @@ fun <T> ReorderableGrid(
             }
         }
     }
+}
+
+/**
+ * Carries a drag from one [ReorderableGrid] into another, as an app is
+ * dragged out of a folder's panel into the App Grid (FR-FOLD-05). Share one
+ * between the grid that gives drags away and the one that receives them.
+ * Transient UI state (AR-02).
+ */
+@Stable
+class DragHandoff {
+    /** The item on its way into the receiving grid, if any. */
+    internal var incoming by mutableStateOf<Incoming?>(null)
+        private set
+
+    /**
+     * Whether the touch of a handed-off drag is still down. The giving grid
+     * keeps the item it gave away composed until then, so the touch stays
+     * with it; its caller must keep showing that grid.
+     */
+    var holding by mutableStateOf(false)
+        private set
+
+    /** Set by the receiving grid: its index nearest a point in the window. */
+    internal var nearest: ((Offset) -> Int?)? = null
+    private var receiver: HandoffReceiver? = null
+    private var pendingDelta = Offset.Zero
+    private var pendingEnd: Boolean? = null
+
+    /**
+     * The position in the receiving grid of its visible item nearest
+     * [pointInWindow], where an item dropped there would go; `null` if it
+     * shows none.
+     */
+    fun indexNear(pointInWindow: Offset): Int? = nearest?.invoke(pointInWindow)
+
+    /** The giving grid hands over the item with [key], its center at [centerInWindow]. */
+    internal fun send(key: String, centerInWindow: Offset) {
+        receiver = null
+        pendingDelta = Offset.Zero
+        pendingEnd = null
+        holding = true
+        incoming = Incoming(key, centerInWindow)
+    }
+
+    /** The finger moved by [by], forwarded by the giving grid. */
+    internal fun drag(by: Offset) {
+        val current = receiver
+        if (current != null) current.drag(by) else pendingDelta += by
+    }
+
+    /** The finger was lifted ([commit]) or the touch taken away, forwarded by the giving grid. */
+    internal fun end(commit: Boolean) {
+        holding = false
+        val current = receiver
+        receiver = null
+        if (current != null) current.end(commit) else pendingEnd = commit
+    }
+
+    /**
+     * The receiving grid has lifted the incoming item, and takes the rest of
+     * the drag through [by]. Returns how far the finger moved meanwhile, and
+     * whether, and how, the touch already ended.
+     */
+    internal fun adopt(by: HandoffReceiver): Pair<Offset, Boolean?> {
+        incoming = null
+        val missed = pendingDelta to pendingEnd
+        pendingDelta = Offset.Zero
+        pendingEnd = null
+        if (missed.second == null) receiver = by
+        return missed
+    }
+
+    /** An item handed from one grid to another: its [key], and its [center] in the window when it left. */
+    internal data class Incoming(val key: String, val center: Offset)
+}
+
+/** The rest of a handed-off drag, as the receiving grid takes it. */
+internal interface HandoffReceiver {
+    fun drag(by: Offset)
+
+    fun end(commit: Boolean)
 }
 
 private sealed interface GridEntry<T> {
@@ -225,6 +353,10 @@ private class GridDrag(private val gridState: LazyGridState, private val scope: 
     /** The order while dragging, and after a drop until the store's order arrives. */
     var order by mutableStateOf<List<String>?>(null)
 
+    /** The key of the dragged item once it has been handed to another grid (FR-FOLD-05). */
+    var handedOff by mutableStateOf<String?>(null)
+        private set
+
     /** How far the finger has moved since the lift. */
     private var total by mutableStateOf(Offset.Zero)
 
@@ -255,6 +387,27 @@ private class GridDrag(private val gridState: LazyGridState, private val scope: 
     var canDropOnto: (String, String) -> Boolean = { _, _ -> false }
     var onDropOnto: (String, String) -> Unit = { _, _ -> }
 
+    /** The content padding at the top and start, where slots are measured from. */
+    var padding = Offset.Zero
+    var handoff: DragHandoff? = null
+
+    /** Where the dragged item may go before it is handed off; `null` when this grid never hands off. */
+    var handOffOutside: (() -> Rect)? = null
+    var onHandOff: (String, Offset) -> Unit = { _, _ -> }
+
+    /** The grid's position in the window, from its last layout. */
+    var position = Offset.Zero
+
+    /**
+     * How much the dragged item is scaled as it is drawn now. Its touch is
+     * measured inside that scale, so each move is scaled back by it, and the
+     * item keeps up with the finger (FR-ANIM-06).
+     */
+    var draggedScale = 1f
+
+    /** Where slot coordinates start, in the window. */
+    private val origin: Offset get() = position + padding
+
     /** [items] in the transient order, if there is one. Items it doesn't know yet go last. */
     fun <T> shown(items: List<T>, key: (T) -> String): List<T> {
         val order = order ?: return items
@@ -268,7 +421,7 @@ private class GridDrag(private val gridState: LazyGridState, private val scope: 
     fun liftDrag(key: String): LiftDrag = liftDrags.getOrPut(key) {
         LiftDrag(
             onLift = { lift(key) },
-            onDrag = { drag(key, it) },
+            onDrag = { drag(key, it * draggedScale) },
             onDrop = { drop(key, commit = true) },
             onCancel = { drop(key, commit = false) },
         )
@@ -305,15 +458,86 @@ private class GridDrag(private val gridState: LazyGridState, private val scope: 
 
     private fun drag(key: String, by: Offset) {
         if (dragged != key) return
+        if (handedOff == key) {
+            handoff?.drag(by)
+            return
+        }
         total += by
         if (!moved && total.getDistance() > slop) {
             moved = true
             onDragStart()
         }
         if (moved) {
+            val outside = handOffOutside
+            if (outside != null && !outside().contains(origin + center())) {
+                handOff(key)
+                return
+            }
             if (autoScrollSpeed() == 0f) hover(key) else follow(key)
             startAutoScroll(key)
         }
+    }
+
+    /**
+     * Gives the dragged item to the receiving grid (FR-FOLD-05). It stays
+     * dragged here, so it stays composed and keeps the touch, but hidden.
+     */
+    private fun handOff(key: String) {
+        val to = handoff ?: return
+        autoScroll?.cancel()
+        stopDwell()
+        dropTarget = null
+        handedOff = key
+        val at = origin + center()
+        onHandOff(key, at)
+        to.send(key, at)
+    }
+
+    /**
+     * The position among [keys] of the visible item nearest [pointInWindow],
+     * for an item handed to this grid; `null` if none is visible.
+     */
+    fun indexNear(pointInWindow: Offset): Int? {
+        val point = pointInWindow - origin
+        val known = keys.toHashSet()
+        val nearest = gridState.layoutInfo.visibleItemsInfo
+            .filter { it.key in known }
+            .minByOrNull { (it.bounds().center - point).getDistanceSquared() } ?: return null
+        return keys.indexOf(nearest.key as String)
+    }
+
+    /**
+     * Lifts the handed-off item with [key] under the finger, whose item
+     * center is at [centerInWindow], and takes over the rest of its drag
+     * (FR-FOLD-05). [headerItems] is how many rows come before the items,
+     * for scrolling to an item that isn't in view.
+     */
+    suspend fun adopt(key: String, centerInWindow: Offset, headerItems: Int) {
+        val from = handoff ?: return
+        if (dragged != null) return
+        // Once it has been laid out; scrolled into view if need be.
+        withFrameNanos { }
+        val slot = slot(key) ?: run {
+            gridState.scrollToItem(keys.indexOf(key).coerceAtLeast(0) + headerItems)
+            withFrameNanos { }
+            slot(key)
+        } ?: return
+        dragged = key
+        start = slot.offset.toOffset()
+        lastSlot = start
+        size = slot.size.toSize()
+        total = centerInWindow - origin - Offset(size.width / 2f, size.height / 2f) - start
+        moved = true
+        order = keys
+        val (missed, ended) = from.adopt(
+            object : HandoffReceiver {
+                override fun drag(by: Offset) = drag(key, by)
+
+                override fun end(commit: Boolean) = drop(key, commit)
+            },
+        )
+        drag(key, missed)
+        if (ended != null) drop(key, ended)
     }
 
     /** The dragged item's center, in the same coordinates as the slots. */
@@ -429,6 +653,16 @@ private class GridDrag(private val gridState: LazyGridState, private val scope: 
 
     private fun drop(key: String, commit: Boolean) {
         if (dragged != key) return
+        if (handedOff == key) {
+            // The receiving grid settles it; here it is simply let go.
+            handedOff = null
+            dragged = null
+            moved = false
+            total = Offset.Zero
+            order = null
+            handoff?.end(commit)
+            return
+        }
         autoScroll?.cancel()
         stopDwell()
         val from = keys.indexOf(key)

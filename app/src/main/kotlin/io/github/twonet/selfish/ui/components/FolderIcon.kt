@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.ui.tokens.Shapes
 import io.github.twonet.selfish.ui.tokens.Sizes
@@ -23,11 +24,17 @@ fun FolderIcon(apps: List<AppEntry>, modifier: Modifier = Modifier) {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.Tiny)) {
             apps.take(PREVIEWED).chunked(PER_ROW).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.Tiny)) {
-                    row.forEach { AppIcon(it, Modifier.size(Sizes.FolderPreviewIcon)) }
+                    row.forEach { AppIcon(it, Modifier.size(Sizes.FolderPreviewIcon).testTag(FolderIconTags.PREVIEW)) }
                 }
             }
         }
     }
+}
+
+/** Test tags for [FolderIcon]'s instrumented tests. */
+internal object FolderIconTags {
+    /** Each previewed app's icon. */
+    const val PREVIEW = "folder-preview"
 }
 
 private const val PREVIEWED = 4

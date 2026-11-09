@@ -3,6 +3,7 @@ package io.github.twonet.selfish.domain.state
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.AppId
 import io.github.twonet.selfish.domain.model.Bounds
+import io.github.twonet.selfish.domain.model.FolderId
 import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.model.Settings
@@ -76,6 +77,36 @@ sealed interface Action {
 
     /** [app] was dropped onto [target], which makes a folder of the two (FR-GRID-08, FR-FOLD-01). */
     data class DropOnto(val app: AppId, val target: AppId) : Action
+
+    /** The user tapped [folder]'s tile, which opens its panel (FR-FOLD-03). */
+    data class OpenFolder(val folder: FolderId) : Action
+
+    /** The user tapped outside the open folder's panel (FR-FOLD-03). */
+    data object CloseFolder : Action
+
+    /** [app], on its own in the grid, was dropped onto [folder] (FR-FOLD-05). */
+    data class AddToFolder(val app: AppId, val folder: FolderId) : Action
+
+    /**
+     * [app] was dragged out of the open folder's panel, which closes it; it
+     * joins the grid at position [to], where the drag carries on (FR-FOLD-05).
+     */
+    data class TakeOutOfFolder(val app: AppId, val to: Int) : Action
+
+    /** [app] was dropped at position [to] within its folder's panel. */
+    data class MoveInFolder(val app: AppId, val to: Int) : Action
+
+    /** The user renamed [folder] to [name] (FR-FOLD-04). */
+    data class RenameFolder(val folder: FolderId, val name: String) : Action
+
+    /** "Remove folder", which runs once its remorse timer runs out (FR-FOLD-07, FR-GEST-06). */
+    data class RemoveFolder(val folder: FolderId) : Action
+
+    /** The user tapped the remorse banner, so the waiting action never runs (FR-GEST-06). */
+    data object CancelRemorse : Action
+
+    /** The remorse timer numbered [number] ran out (FR-GEST-06). */
+    data class RemorseDue(val number: Int) : Action
 
     /** "App info" (FR-GRID-06). */
     data class OpenAppInfo(val app: AppId) : Action

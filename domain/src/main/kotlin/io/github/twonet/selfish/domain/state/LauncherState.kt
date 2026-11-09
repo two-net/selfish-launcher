@@ -2,10 +2,13 @@ package io.github.twonet.selfish.domain.state
 
 import io.github.twonet.selfish.domain.layout.LayoutRules
 import io.github.twonet.selfish.domain.model.AppEntry
+import io.github.twonet.selfish.domain.model.FolderId
 import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.model.Settings
 import io.github.twonet.selfish.domain.ports.ClockInfo
+import io.github.twonet.selfish.domain.remorse.Destructive
+import io.github.twonet.selfish.domain.remorse.PendingRemorse
 
 /**
  * The single source of truth (AR-02). Presentation renders this and nothing
@@ -59,6 +62,14 @@ data class LauncherState(
      * is shown, so the clock doesn't wake it in the background (NFR-PWR-02).
      */
     val clock: ClockInfo? = null,
+    /**
+     * The destructive action waiting for its remorse timer, if any
+     * (FR-GEST-06, DESIGN §4.6). Not saved: a process that dies first never
+     * runs it, which errs on the side of keeping the user's things.
+     */
+    val remorse: PendingRemorse? = null,
+    /** How many remorse timers have started, so a stale one can be told apart. */
+    val remorses: Int = 0,
 )
 
 /**
@@ -108,6 +119,20 @@ sealed interface GridCell {
 /** What the open context menu belongs to, if one is open (FR-HOME-06, FR-GRID-06). */
 val LauncherState.contextMenu: MenuTarget?
     get() = overlays.filterIsInstance<Overlay.ContextMenu>().lastOrNull()?.target
+
+/**
+ * The folder open over the App Grid, with its apps (FR-FOLD-03), if one is
+ * open and the catalog knows any of its apps.
+ */
+val LauncherState.openFolder: GridCell.Folder?
+    get() {
+        val id = overlays.filterIsInstance<Overlay.Folder>().lastOrNull()?.id ?: return null
+        return gridCells.firstOrNull { it is GridCell.Folder && it.folder.id == id } as GridCell.Folder?
+    }
+
+/** The folder whose removal is waiting for its remorse timer, if any (FR-FOLD-07). */
+val LauncherState.pendingRemoval: FolderId?
+    get() = (remorse?.action as? Destructive.RemoveFolder)?.folder
 
 /** Whether Home has no room for another cover, so "Add to Home" explains instead (FR-HOME-05). */
 val LauncherState.homeFull: Boolean

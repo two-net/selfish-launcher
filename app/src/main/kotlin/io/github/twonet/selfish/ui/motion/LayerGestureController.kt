@@ -149,19 +149,24 @@ class LayerGestureController(private val scope: CoroutineScope) {
  * dragging it. Touches that start inside [ignored], the system gesture
  * areas, are left alone (FR-GEST-04). Touching a settling transition
  * catches it, and the same touch drags it either way (FR-GEST-03).
+ *
+ * While [paused], for example with a folder open over the App Grid, resting
+ * layers take no touches at all, so a pull on the folder goes to its pulley
+ * menu (FR-FOLD-07).
  */
 fun Modifier.layerGestures(
     controller: LayerGestureController,
     ignored: WindowInsets,
     homeScrolls: () -> Boolean,
     gridScrolls: () -> Boolean,
+    paused: () -> Boolean = { false },
 ): Modifier = pointerInput(controller, ignored) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
         val catching = controller.isSettling
         if (!catching) {
             val resting = controller.isAtHome || controller.isOpen
-            if (!resting || ignored.contains(down.position, this, size.width, size.height)) return@awaitEachGesture
+            if (!resting || paused() || ignored.contains(down.position, this, size.width, size.height)) return@awaitEachGesture
         }
         val velocity = VelocityTracker().apply { addPosition(down.uptimeMillis, down.position) }
         var taken = catching

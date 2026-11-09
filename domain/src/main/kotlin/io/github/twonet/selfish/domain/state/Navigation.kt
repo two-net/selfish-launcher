@@ -22,9 +22,13 @@ sealed interface Layer {
 /**
  * Something open over a [Layer], such as a folder. Overlays stack; System
  * Back closes the topmost one first (FR-GEN-04). Feature issues add the
- * pulley menu and keyboard.
+ * keyboard (#9).
  */
 sealed interface Overlay {
+    /**
+     * The panel of the folder [id], open over the App Grid (FR-FOLD-03). At
+     * most one is open, and it closes when the folder no longer exists.
+     */
     data class Folder(val id: FolderId) : Overlay
 
     /**
@@ -35,9 +39,9 @@ sealed interface Overlay {
 }
 
 /**
- * What a context menu belongs to. Only apps have one: a folder in the App
- * Grid is lifted and moved without a menu, and its own actions live in its
- * panel (#8).
+ * What a context menu belongs to. Only apps have one, in the App Grid or in
+ * a folder's panel: a folder is lifted and moved without a menu, and its own
+ * actions live in its panel's pulley menu (FR-FOLD-07).
  */
 sealed interface MenuTarget {
     val app: AppId
@@ -45,6 +49,6 @@ sealed interface MenuTarget {
     /** A cover on Home (FR-HOME-05, FR-HOME-06). */
     data class Cover(override val app: AppId) : MenuTarget
 
-    /** An app in the App Grid (FR-HOME-05, FR-GRID-06). */
+    /** An app in the App Grid, or in an open folder (FR-HOME-05, FR-GRID-06). */
     data class App(override val app: AppId) : MenuTarget
 }

@@ -64,7 +64,7 @@ If this document and the SRS disagree, the SRS wins and this document is correct
 - **Compose covers the interaction model.** The SRS needs:
   - pointer input with velocity tracking;
   - `Animatable` springs that can be caught mid-flight (FR-GEST-01 to FR-GEST-03);
-  - nested scrolling for pulley menus (FR-GEST-05);
+  - pointer input that a page can watch before its elements, for pulley menus (FR-GEST-05);
   - semantics with custom accessibility actions (FR-GEST-09, NFR-A11Y-01, NFR-A11Y-02);
   - automatic right-to-left mirroring (NFR-L10N-03) and `sp` font scaling (NFR-A11Y-04).
 - **Why no Material.** The look is translucent glass with highlight-color glows (UI-01, FR-ANIM-04), not Material surfaces and ripples. `foundation` already provides `BasicText`, `BasicTextField`, lazy grids and gesture detection. The launcher's own components are built on those, and leaving Material out helps the 10 MB budget (NFR-PERF-07).
@@ -237,7 +237,7 @@ Every component here is plain Kotlin, has no Android imports, and is covered by 
 
 ```
 Layer:    Home | AppGrid | Events | TopMenu | Settings(page) | WallpaperDetails | Tutorial(step)
-Overlays: Folder(id) · ContextMenu(target) · PulleyMenu(page) · Keyboard     (stacked over a layer)
+Overlays: Folder(id) · ContextMenu(target) · Keyboard     (stacked over a layer)
 ```
 
 | Rule | Serves |
@@ -250,8 +250,11 @@ Overlays: Folder(id) · ContextMenu(target) · PulleyMenu(page) · Keyboard     
 | `LauncherState.firstRun` is true when nothing usable was saved at start. On a first run, once the state is restored *and* the launcher is on screen (`Action.HomeShown`), the reducer emits `Effect.OfferDefaultHome` once per process. The store shows the system prompt only if the launcher isn't the default already. Waiting for the screen matters because the process may have started for the background job, with no Activity to show the prompt over. | FR-GEN-02, FR-ONB-01 |
 | A catalog change reconciles the saved layout (`CatalogReconciler`, §4.2), and closes a context menu whose app is gone. | FR-GEN-06 |
 | Without a saved layout, the first catalog change with apps in it sets `resolvingDefaults` and emits `Effect.ResolveDefaultApps`, once. The store asks `AppCatalog.defaultApps()`, falling back to none if that fails, and dispatches `DefaultAppsResolved`, which builds `LayoutRules.firstRun` while there is still no layout. The savers then write it. A layout that couldn't be *read* also gets a first-run layout, but it is never saved over the unread file (§3.3). | FR-HOME-07, FR-ONB-01 |
-| `Overlay.ContextMenu(target)` is the one open context menu; `target` is a `MenuTarget`: a `Cover(app)` on Home or an `App(app)` in the App Grid. Folders have no context menu: a long-press only lifts them, and their actions live in their panel (#8). Opening one replaces any other. Back, Home, a tap outside (`CloseContextMenu`), a drag, a launch, choosing an item and moving to another layer close it. | FR-HOME-05, FR-HOME-06, FR-GRID-06 |
+| `Overlay.ContextMenu(target)` is the one open context menu; `target` is a `MenuTarget`: a `Cover(app)` on Home or an `App(app)` in the App Grid or an open folder, where it stacks over the folder. Folders have no context menu: a long-press only lifts them, and their actions live in their panel's pulley menu. Opening one replaces any other. Back, Home, a tap outside (`CloseContextMenu`), a drag, a launch, choosing an item and moving to another layer close it. | FR-HOME-05, FR-HOME-06, FR-GRID-06 |
 | `AddToHome`, `RemoveFromHome`, `MoveCover`, `MoveGridItem` and `DropOnto` apply the `LayoutRules` operations and close the menu. `AddToHome` on a full Home changes nothing: the menu already says Home is full. | FR-HOME-05, FR-HOME-06, FR-GRID-05, FR-GRID-08 |
+| `OpenFolder(id)` pushes `Overlay.Folder(id)`, closing any menu, only on the App Grid, for a folder that exists and isn't waiting to be removed; one folder is open at a time. `CloseFolder` (a tap on the dim) pops it with anything over it; Back and Home close it as they close any overlay. | FR-FOLD-03 |
+| `AddToFolder`, `MoveInFolder` and `RenameFolder` apply their `LayoutRules` operations. `TakeOutOfFolder(app, to)` also closes the folder: the app was dragged past the panel's edge, and the drag carries on in the grid (§6.4). A layout change or catalog change that removes the open folder, such as a drag-out or an uninstall that dissolves it, closes its overlay and anything over it (`pruneOverlays`). | FR-FOLD-04, FR-FOLD-05, FR-FOLD-06 |
+| `RemoveFolder(id)` closes the folder and starts a remorse timer (§4.6); the folder stays, faded and closed to drops and taps, until `RemorseDue(n)` removes it. `CancelRemorse` (a tap on the banner) keeps it. | FR-FOLD-07, FR-GEST-06 |
 | `OpenAppInfo` and `Uninstall` close the menu and emit `Effect.OpenAppInfo` and `Effect.RequestUninstall`, which the store passes to `AppCatalog`. An uninstall the user confirms arrives later as a catalog change. The menu offers Uninstall only for apps that aren't system apps (`AppEntry.removable`, §5.1). | FR-GRID-06, FR-GRID-09 |
 | `Action.LayerSettled(layer)` is where a released swipe, or the screen reader's "Show apps", ends up (§6.3). On the current layer it changes nothing; otherwise it moves there and closes the overlays, which belong to the layer they were opened on. Hiding the launcher leaves the App Grid open, so Back from an app launched from it returns there; a Home press closes it. | FR-GRID-01, FR-GRID-04, FR-GEN-03 |
 | Closing the App Grid clears the search query and hides the keyboard. | FR-SRCH-05 |
@@ -271,9 +274,12 @@ Layout operations are pure functions in `LayoutRules` over `Layout(grid: List<Gr
 | `addToHome`, `removeFromHome` | At most 9 covers. Adding a tenth returns `HomeFull`. | FR-HOME-05 |
 | `moveCover`, `moveItem` | Moves the item and keeps the order of everything else. `moveItem` finds apps by `AppId` and folders by `FolderId`, so a folder renamed during a drag is still found. | FR-HOME-06, FR-GRID-05, FR-GRID-07 |
 | `coverColumns(n)` | 1 to 4 covers → 2 columns; 5 to 9 → 3 columns. | FR-HOME-03 |
-| `dropOnto(app, target)` | Creates a `Folder("Folder", [target, app])` at the target's position. Only for two different apps that are each on their own in the grid; dropping into or out of a folder is #8's. Home is unchanged: an app in a folder can still be a cover. | FR-GRID-08, FR-FOLD-01 |
-| `addToFolder`, `removeFromFolder` | A folder left with one app dissolves into that app, in the folder's place. | FR-FOLD-05, FR-FOLD-06 |
-| `renameFolder`, `removeFolder` | Removing puts the folder's apps back into the grid at its position. | FR-FOLD-04, FR-FOLD-07 |
+| `dropOnto(app, target)` | Creates a `Folder("Folder", [target, app])` at the target's position. Only for two different apps that are each on their own in the grid. Home is unchanged: an app in a folder can still be a cover. | FR-GRID-08, FR-FOLD-01 |
+| `addToFolder(app, folder)` | Moves an app that is on its own in the grid to the end of the folder; its slot closes up. An app already in a folder, or a missing folder, changes nothing. | FR-FOLD-05, FR-FOLD-08 |
+| `removeFromFolder(app, to)` | Takes the app out of its folder and puts it on its own at `to` in the resulting grid, clamped. A folder left with one app dissolves into that app, in the folder's place. | FR-FOLD-05, FR-FOLD-06, AC-08 |
+| `moveInFolder(app, to)` | Moves an app within its folder; the others keep their order. | FR-FOLD-05 |
+| `renameFolder(folder, name)` | Trims the name; a blank name keeps the old one. | FR-FOLD-04 |
+| `removeFolder(folder)` | Puts the folder's apps back into the grid in its place, in their order. | FR-FOLD-07 |
 | `sortAlphabetically` | Uses a `java.text.Collator` for the device locale. | FR-SET-10 |
 | `firstRun(apps, defaults)` | Builds the grid in the order of `apps`, which the store keeps alphabetical. Home gets the default phone, messaging, browser and camera apps, in that order, each once and only if it is in `apps`. | FR-HOME-07, FR-ONB-01, FR-SET-16 |
 | `CatalogReconciler.reconcile(layout, apps)` | Removes apps that are no longer launchable from the grid, Home and folders without leaving gaps. Appends new apps at the end, in catalog order, and dissolves folders left with one app. | FR-GEN-06, FR-GRID-05, FR-GRID-09 |
@@ -341,9 +347,11 @@ With "Covers show: Recently used" (FR-HOME-10, C), Home shows `UsageSource.recen
 
 ### 4.6 Remorse queue
 
-- `RemorseQueue` holds at most one pending destructive action: a label, a deadline (now + 5 s) and the action.
+- `RemorseQueue` holds at most one pending destructive action, `LauncherState.remorse`: a `Destructive` action and the number of its timer. *Built in #8 for removing a folder;* #10 and #18 add their actions.
+- Starting one emits `Effect.DispatchAfter(5 s, RemorseDue(n))`. The timer fires in the store's scope, so the action runs even after the user navigates away. A `RemorseDue` whose number isn't the pending one's is stale and does nothing, as with launch timeouts.
 - A second destructive action commits the pending one right away.
-- Cancelling restores the state. The deadline fires in the store's scope, so the action runs even after the user navigates away.
+- Nothing changes until the action is committed, so cancelling just drops it. The pending action isn't saved: if the process dies first, nothing is lost.
+- The reducer keeps no clock, so the banner's countdown runs from when it appears, as transient UI state (§6.4), rather than toward a deadline held in state.
 - Used for clearing notifications, removing a folder, sorting A–Z and resetting the layout.
 - Serves FR-GEST-06, FR-FOLD-07, FR-EVT-06, FR-SET-10 and FR-SET-16.
 
@@ -512,30 +520,31 @@ One `LayerGestureController` in `ui/motion/` drives every view transition. #7 bu
 | Settling | `spring(dampingRatio = 1f)`, which is critically damped, seeded with the release velocity. | §4.9 tokens |
 | Interruption | Touching during a settle stops the `Animatable` and continues the drag from its current value. | FR-GEST-03 |
 | App Grid close | The same take-over: while the grid can't scroll back any further, a downward swipe goes to the controller instead of the list. | FR-GRID-04 |
+| Open folder | While a folder is open, resting layers take no swipes, so a downward pull on the panel reaches its pulley menu instead of closing the grid. | FR-FOLD-07 |
 | Layer changes from the store | When the store changes the layer, for example on a Home or Back press, the controller animates there. A Home press that brings the launcher back from another app arrives before its window has focus; then it jumps, so the grid isn't seen closing. | FR-GEN-03, FR-GEN-04 |
 | Events | Sideways swipes that start on a dismissible notification go to that notification instead. | FR-EVT-05 |
 | Dim and blur | Follow App Grid progress. Home slides up out of the way as the grid slides in, as one sheet. | FR-ANIM-01 |
 | Reduced motion | When the system animator scale is 0 or Animations is set to Reduced, settles and enter/exit animations become snaps or fades of at most 100 ms. Drags still follow the finger. | FR-ANIM-15, NFR-A11Y-05 |
 
-The release decision, direction lock and pull-depth mapping are pure functions (`GestureMath`), unit-tested on the JVM. Thresholds, durations, easings and springs are defined once, in `ui/tokens/Motion.kt`.
+The release decision, direction lock, rubber band and pull-depth mapping are pure functions (`GestureMath`), unit-tested on the JVM. Thresholds, durations, easings and springs are defined once, in `ui/tokens/Motion.kt`.
 
 ### 6.4 Shared components
 
 | Component | Behavior | Serves |
 |---|---|---|
-| `PulleyMenu` | Overscroll at the top of a page becomes pull distance, with rubber-band resistance. The item index = (pull − first offset) ÷ item spacing. Each change of index plays a tick haptic (`CLOCK_TICK`, or `SEGMENT_TICK` on API 34+). Releasing selects the item, which flashes in the highlight color. A subtle indicator at the top shows that the menu exists. | FR-GEST-05, FR-ANIM-09 |
+| `PulleyMenu` | *Built in #8 for folders.* A downward pull at the top of a page is taken over like a swipe (§6.3): watched before the page's elements, and taken once it passes the slop before the long-press timeout, so taps, scrolling and long-presses still work. The pull follows `GestureMath.rubberBand`, which resists more the further it goes, up to one item beyond the last. The items appear one at a time above the page, the first nearest it, and the page grows by the pull. Each row is 48 dp, or a header line if that is taller; item = ⌊pull ÷ row⌋ − 1, none before the first. Each change of item plays a tick haptic (`CLOCK_TICK`, or `SEGMENT_TICK` on API 34+), unless Haptic feedback is Off. Releasing selects the item, which flashes in the highlight color (header size, so 3:1 is enough) for the Short duration before it runs; releasing before the first item cancels. A short bar at the top shows that the menu exists. `pulleyActions` gives the items to the page header as accessibility actions. | FR-GEST-05, FR-ANIM-09, FR-AMB-04 |
 | `ContextMenu` | A full-width item inserted after the pressed item's row. `animateItem()` pushes later rows down. Dragging the lifted icon closes the menu and starts a move. When it opens below the visible rows, its list scrolls just enough to show it. A disabled item explains itself, as "Add to Home" does on a full Home. `Modifier.onUnhandledTap` closes it on a tap that nothing else handled. | FR-GRID-06, FR-ANIM-08, FR-HOME-05 |
-| `ReorderableGrid` | Long-press lifts the item to 110% with a shadow, and the other items reflow with `animateItem()`. The order while dragging is transient; only the drop reaches the store, as the item's new index. The lifted item's context menu is a full-span item after its row. *Built in #6 for Home's covers;* #7 added, for the App Grid: a fixed full-width first row (the search field); auto-scrolling while the dragged item is within 64 dp of the top or bottom, faster the deeper it is, with its slot following the finger and the item pinned so it stays composed; and, where the caller allows it, dropping onto the central half of another item. There the target grows to show it will take the drop; around that center, the dragged item takes the other's place only after resting for 250 ms, so passing over an app doesn't push it away. This is owned code, because the rules are launcher-specific (§7). | FR-HOME-06, FR-GRID-05, FR-GRID-07, FR-GRID-08, FR-ANIM-05, FR-ANIM-06 |
+| `ReorderableGrid` | Long-press lifts the item to 110% with a shadow, and the other items reflow with `animateItem()`. The touch is measured inside the lifted item's scale, so each move is scaled back by it and the item stays under the finger (fixed in #8). The order while dragging is transient; only the drop reaches the store, as the item's new index. The lifted item's context menu is a full-span item after its row. *Built in #6 for Home's covers;* #7 added, for the App Grid: a fixed full-width first row (the search field); auto-scrolling while the dragged item is within 64 dp of the top or bottom, faster the deeper it is, with its slot following the finger and the item pinned so it stays composed; and, where the caller allows it, dropping onto the central half of another item. There the target grows to show it will take the drop; around that center, the dragged item takes the other's place only after resting for 250 ms, so passing over an app doesn't push it away. *#8 added* a `DragHandoff` between two grids. Once the dragged item's center leaves the giving grid's area (a folder's panel), that grid hides the item, keeps it composed so it keeps the touch, and forwards the rest of the touch. The receiving grid (the App Grid) lifts the item under the finger as soon as it is among its items; the store has put it at the visible item nearest the finger. This is owned code, because the rules are launcher-specific (§7). | FR-HOME-06, FR-GRID-05, FR-GRID-07, FR-GRID-08, FR-FOLD-05, FR-ANIM-05, FR-ANIM-06 |
 | `Cover` | A portrait glass card with the app's icon and name, read as the app's name. | FR-HOME-03, NFR-A11Y-01 |
 | `FolderIcon` | A glass square the size of an app icon, previewing a folder's first four apps two by two. Decorative; the folder's tile reads "Folder, ⟨name⟩, ⟨n⟩ apps". | FR-GRID-02, FR-FOLD-02, NFR-A11Y-01 |
-| `RemorseBanner` | Shows the action's label and a bar that shrinks toward the deadline held in state. Tapping it dispatches `CancelRemorse`, and the affected item animates back. | FR-GEST-06, FR-ANIM-12 |
+| `RemorseBanner` | *Built in #8.* At the bottom, over every layer, inside the safe-drawing insets, so it doesn't line up with the App Grid's search field; its glass lies on the scrim, so what is beneath doesn't show through its label. It shows the action's label and a bar in the highlight color that shrinks evenly toward the start edge over the 5 s, from when the banner appears. Tapping it dispatches `CancelRemorse`, and the affected item animates back: a folder waiting to be removed is faded until then. | FR-GEST-06, FR-ANIM-12, FR-AMB-04 |
 | `Modifier.pressable` | The only way to handle taps and long-presses. It keeps every touch target at least 48 × 48 dp and uses `LocalIndication`, so `PressGlow` reaches every element. With a `LiftDrag`, a long-press lifts the element and the same touch drags it (`detectDragGesturesAfterLongPress`, inside the clickable so it takes the release); screen readers get the lift as the long-click action. | UI-06, FR-ANIM-04, FR-HOME-06 |
 | `LauncherText` | Text in one of the four roles (display, header, body, label) at primary or secondary emphasis. It takes no color, so body text can't be drawn in the highlight. | UI-04, FR-AMB-04 |
 | `Glass` | A translucent panel in the glass color and shape, for cards, menus and folder panels. | UI-01 |
-| `PageHeader` | Large (header style), full width, `TextAlign.End` so it mirrors in right-to-left languages, in the highlight color, and announced as a heading. | UI-02, FR-EVT-02 |
+| `PageHeader` | Large (header style), full width, `TextAlign.End` so it mirrors in right-to-left languages, in the highlight color, and announced as a heading, with its page's pulley items as accessibility actions. `EditablePageHeader` (#8) turns into a one-line field in the same style when tapped, with the text selected and the keyboard shown; Done, losing focus or the page closing keeps what was typed. Editing is transient UI state, so it needs no keyboard overlay. | UI-02, FR-EVT-02, FR-FOLD-04 |
 | `AppIcon` | Every app icon at the one icon size. Icons that support a shape (adaptive icons) are clipped to the icon shape; a profile badge is drawn over it unclipped. Until the icon has loaded through `AppIcons` (§5.1), or if it can't load, it shows the label's initial on glass. Decorative to screen readers, because the item's label names the app. | UI-05, FR-GEN-10 |
 | `PressGlow` | A Compose `Indication` that draws a highlight-color glow on the first frame of a press and fades it out over the Short duration. | FR-ANIM-04 |
-| Folder panel | A shared-bounds transition from the tile to the panel and back. | FR-FOLD-03, FR-ANIM-07 |
+| Folder panel | *Built in #8* (`ui/folder/FolderPanel`), as an overlay of the App Grid, which hosts it so the two share a `DragHandoff`. A dim that closes it when tapped covers the grid, and on it a glass panel holds the folder's name (`EditablePageHeader`) and its apps in a `ReorderableGrid`, in a `PulleyMenu` with Rename and Remove folder. It opens centered and then keeps its top, growing downward, so an app's menu opening in it or a pull never moves the app under the finger. It grows from the folder's icon to its own bounds by scale and translation in a `graphicsLayer`, over the Medium duration, and shrinks back into it. While it closes, and while an app dragged out of it is still under the finger, it keeps showing the folder as it was. Closed by a drag-out, it only fades, because the touch is still measured in its coordinates, which shrinking would stretch. | FR-FOLD-03, FR-FOLD-05, FR-ANIM-07 |
 | `GestureHint` | A glowing touch point that traces a gesture in the tutorial and in contextual hints. | FR-ANIM-13, FR-ONB-02 |
 
 **Haptics**
@@ -596,7 +605,7 @@ The release decision, direction lock and pull-depth mapping are pure functions (
 
 | Feature | Implementation | Serves |
 |---|---|---|
-| Gesture alternatives | Home exposes custom accessibility actions: "Show apps" (built in #7), "Show events" and "Show top menu". Each pulley menu exposes its items as custom actions on its page header. The remorse banner is a button labeled "Cancel ⟨action⟩" and is announced through a live region. | FR-GEST-09, NFR-A11Y-02, AC-10 |
+| Gesture alternatives | Home exposes custom accessibility actions: "Show apps" (built in #7), "Show events" and "Show top menu". Each pulley menu exposes its items as custom actions on its page header (built in #8 for folders). The remorse banner is a button labeled "Cancel ⟨action⟩" and is announced through a live region. | FR-GEST-09, NFR-A11Y-02, AC-10 |
 | Labels | Covers and icons read the app's name. Folders read "Folder, ⟨name⟩, ⟨n⟩ apps". | NFR-A11Y-01 |
 | Large text | Grid labels can wrap to two lines at large font scales. Layouts are tested at the largest system font scale for overflow. | FR-GRID-02, NFR-A11Y-04 |
 | Contrast | §6.5 | NFR-A11Y-03 |
@@ -727,9 +736,9 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 
 | Requirements | Level | Verified by |
 |---|---|---|
-| FR-FOLD-01, FR-FOLD-04, FR-FOLD-05, FR-FOLD-06, FR-FOLD-08 | U | `LayoutRulesTest`: folder rules and invariants. |
-| FR-FOLD-02, FR-FOLD-03 | I | `FolderTest`: tile preview; open; close with Back, Home or a tap outside. |
-| FR-FOLD-07 | U, I | `RemorseQueueTest`. `FolderTest`: pulley menu with Rename and Remove folder. |
+| FR-FOLD-01, FR-FOLD-04, FR-FOLD-05, FR-FOLD-06, FR-FOLD-08 | U, I | `LayoutRulesTest`: folder rules and invariants. `LauncherReducerTest`: adding, taking out, moving and renaming; a folder that dissolves closes. `FolderTest`: renaming by tapping the name; an app dropped onto a folder joins it; an app dragged out of the panel keeps being dragged, to a place in the grid or onto another app; an app in a folder has its menu and moves within it; a folder is never dropped into anything. |
+| FR-FOLD-02, FR-FOLD-03 | I, R | `FolderTest`: at most four previews; tapping opens the panel with the name as a heading and the apps; Back, Home and a tap on the dim close it. `LauncherReducerTest`: only on the App Grid, one at a time. Review item: the panel grows from its tile and shrinks back. |
+| FR-FOLD-07 | U, I, R | `RemorseQueueTest`. `LauncherReducerTest`: the timer, cancelling, a stale timer, and a second removal committing the first. `LauncherStoreTest`: it runs after the launcher is hidden, in virtual time. `FolderTest`: pulling to "Remove folder" shows the banner and keeps the folder, tapping the banner cancels, and when the timer runs out its apps return in place; "Rename" as an accessibility action. Review item: the pulley's haptics. |
 
 **Search (SRS §4.5)**
 
@@ -759,8 +768,8 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 | Requirements | Level | Verified by |
 |---|---|---|
 | FR-GEST-01, FR-GEST-02, FR-GEST-03, FR-GEST-04 | U, I | `GestureMathTest`: threshold, fling, direction lock. `NavigationTest`: 1:1 tracking, peek, complete, catching mid-flight, ignoring system gesture areas (AC-05). |
-| FR-GEST-05 | U, I | `GestureMathTest`: pull depth → item. `EventsTest`: pulley selection and cancel. |
-| FR-GEST-06 | U, I | `RemorseQueueTest` (virtual time). `EventsTest`: cancel by tapping the banner (AC-06). |
+| FR-GEST-05 | U, I, R | `GestureMathTest`: rubber band, pull depth → item, every item within reach. `FolderTest`: a slow pull chooses the second item. `EventsTest` (#10): pulley selection and cancel. Review item: the tick haptics. |
+| FR-GEST-06 | U, I | `RemorseQueueTest`. `LauncherReducerTest`, `LauncherStoreTest` (virtual time). `FolderTest`: cancel by tapping the banner. `EventsTest` (#10): the same for clearing notifications (AC-06). |
 | FR-GEST-07 | R | Long-press uses the system timeout and plays a tick. |
 | FR-GEST-08 | U, R | `HapticsTest`: Off suppresses haptics. Review: follows the system setting. |
 | FR-GEST-09 | I | `AccessibilityTest`: every gesture-only action is reachable as an accessibility action (AC-10). |
@@ -926,7 +935,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 | AC-05 | I | `NavigationTest`. |
 | AC-06 | I | `EventsTest`. |
 | AC-07 | I, R | `AppGridTest`: a catalog change while the grid is scrolled keeps every item where it is and adds the new app at the end. A real install is a review item. |
-| AC-08 | I | `FolderTest`. |
+| AC-08 | U, I | `LayoutRulesTest` and `LauncherReducerTest`: the rules. `FolderTest`: A onto B makes "Folder"; dragging B back out dissolves it, leaves A in its place and puts B where it is dropped. |
 | AC-09 | I | `NavigationTest` with the animator scale at 0. |
 | AC-10 | I | `AccessibilityTest`. |
 | AC-11 | R | 24-hour packet capture on the reference device. |

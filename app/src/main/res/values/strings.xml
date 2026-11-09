@@ -22,4 +22,16 @@
         <item quantity="one">Folder, %1$s, %2$d app</item>
         <item quantity="other">Folder, %1$s, %2$d apps</item>
     </plurals>
+
+    <!-- Folders (SRS §4.4) -->
+    <!-- A folder panel's pulley menu item, and the screen-reader action on its name, that rename it (FR-FOLD-04, FR-FOLD-07). -->
+    <string name="menu_rename">Rename</string>
+    <!-- A folder panel's pulley menu item; its apps go back into the grid after a remorse timer (FR-FOLD-07). -->
+    <string name="menu_remove_folder">Remove folder</string>
+
+    <!-- Remorse timers (FR-GEST-06) -->
+    <!-- The banner of a folder about to be removed. -->
+    <string name="remorse_remove_folder">Removing folder</string>
+    <!-- How screen readers read the remorse banner, a button that cancels the action: %1$s is the banner's label. -->
+    <string name="remorse_cancel">Cancel: %1$s</string>
 </resources>

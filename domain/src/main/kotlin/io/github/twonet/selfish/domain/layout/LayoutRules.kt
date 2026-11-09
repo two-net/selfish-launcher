@@ -7,10 +7,7 @@ import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.ports.DefaultApps
 
-/**
- * Pure operations over a [Layout] (DESIGN §4.2). Folder editing (#8) joins
- * these.
- */
+/** Pure operations over a [Layout] (DESIGN §4.2). */
 object LayoutRules {
     /** Home holds at most this many covers (FR-HOME-03, FR-HOME-05). */
     const val MAX_COVERS = 9
@@ -107,7 +104,7 @@ object LayoutRules {
      */
     fun dropOnto(layout: Layout, app: AppId, target: AppId): Layout {
         if (app == target) return layout
-        val loose = layout.grid.filterIsInstance<GridItem.App>().mapTo(HashSet()) { it.id }
+        val loose = layout.looseApps()
         if (app !in loose || target !in loose) return layout
         val folder = GridItem.Folder(id = nextFolderId(layout), apps = listOf(target, app))
         val grid = layout.grid.mapNotNull { item ->
@@ -120,6 +117,96 @@ object LayoutRules {
         }
         return layout.copy(grid = grid)
     }
+
+    /**
+     * Moves [app], an app on its own in the grid, into [folder], after the
+     * apps already there (FR-FOLD-05). Its grid slot closes up. An app
+     * already in a folder, or a folder that isn't there, changes nothing;
+     * folders themselves never go into one (FR-FOLD-08).
+     */
+    fun addToFolder(layout: Layout, app: AppId, folder: FolderId): Layout {
+        if (app !in layout.looseApps() || findFolder(layout, folder) == null) return layout
+        val grid = layout.grid.mapNotNull { item ->
+            when {
+                item is GridItem.App && item.id == app -> null
+                item is GridItem.Folder && item.id == folder -> item.copy(apps = item.apps + app)
+                else -> item
+            }
+        }
+        return layout.copy(grid = grid)
+    }
+
+    /**
+     * Takes [app] out of its folder and puts it on its own at position [to]
+     * of the resulting grid, clamped to its bounds (FR-FOLD-05). A folder
+     * left with one app dissolves into that app, in the folder's place
+     * (FR-FOLD-06, AC-08). An app that isn't in a folder changes nothing.
+     */
+    fun removeFromFolder(layout: Layout, app: AppId, to: Int): Layout {
+        val from = folderIndexOf(layout, app)
+        if (from < 0) return layout
+        val folder = layout.grid[from] as GridItem.Folder
+        val left = folder.apps - app
+        val grid = layout.grid.toMutableList()
+        when (left.size) {
+            // Only in a layout that was never normalized.
+            0 -> grid.removeAt(from)
+            1 -> grid[from] = GridItem.App(left.single())
+            else -> grid[from] = folder.copy(apps = left)
+        }
+        grid.add(to.coerceIn(0, grid.size), GridItem.App(app))
+        return layout.copy(grid = grid)
+    }
+
+    /**
+     * Moves [app] to position [to] within its folder, clamped to the folder's
+     * bounds; the folder's other apps keep their order. An app that isn't in
+     * a folder changes nothing.
+     */
+    fun moveInFolder(layout: Layout, app: AppId, to: Int): Layout {
+        val at = folderIndexOf(layout, app)
+        if (at < 0) return layout
+        val folder = layout.grid[at] as GridItem.Folder
+        val from = folder.apps.indexOf(app)
+        val target = to.coerceIn(0, folder.apps.lastIndex)
+        if (target == from) return layout
+        val apps = folder.apps.toMutableList().apply { add(target, removeAt(from)) }
+        return layout.copy(grid = layout.grid.toMutableList().apply { set(at, folder.copy(apps = apps)) })
+    }
+
+    /**
+     * Renames [folder] to [name], trimmed (FR-FOLD-04). A blank name, or a
+     * folder that isn't there, changes nothing.
+     */
+    fun renameFolder(layout: Layout, folder: FolderId, name: String): Layout {
+        val trimmed = name.trim()
+        val current = findFolder(layout, folder) ?: return layout
+        if (trimmed.isEmpty() || trimmed == current.name) return layout
+        return layout.copy(grid = layout.grid.map { if (it is GridItem.Folder && it.id == folder) it.copy(name = trimmed) else it })
+    }
+
+    /**
+     * Removes [folder], putting its apps back into the grid in its place, in
+     * their order (FR-FOLD-07). A folder that isn't there changes nothing.
+     */
+    fun removeFolder(layout: Layout, folder: FolderId): Layout {
+        if (findFolder(layout, folder) == null) return layout
+        val grid = layout.grid.flatMap { item ->
+            if (item is GridItem.Folder && item.id == folder) item.apps.map(GridItem::App) else listOf(item)
+        }
+        return layout.copy(grid = grid)
+    }
+
+    /** The folder with [id], if [layout]'s grid has one. */
+    fun findFolder(layout: Layout, id: FolderId): GridItem.Folder? =
+        layout.grid.firstOrNull { it is GridItem.Folder && it.id == id } as GridItem.Folder?
+
+    /** The grid position of the folder holding [app], or -1. */
+    private fun folderIndexOf(layout: Layout, app: AppId): Int =
+        layout.grid.indexOfFirst { it is GridItem.Folder && app in it.apps }
+
+    /** The apps on their own in the grid, not in a folder. */
+    private fun Layout.looseApps(): Set<AppId> = grid.filterIsInstance<GridItem.App>().mapTo(HashSet()) { it.id }
 
     /** Whether [this] and [other] are the same grid item: the same app, or the same folder. */
     private fun GridItem.sameAs(other: GridItem): Boolean = when (this) {

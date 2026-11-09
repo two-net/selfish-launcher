@@ -3,7 +3,11 @@ package io.github.twonet.selfish.domain.state
 import io.github.twonet.selfish.domain.layout.AddToHomeResult
 import io.github.twonet.selfish.domain.layout.CatalogReconciler
 import io.github.twonet.selfish.domain.layout.LayoutRules
+import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Layout
+import io.github.twonet.selfish.domain.remorse.Destructive
+import io.github.twonet.selfish.domain.remorse.REMORSE_DELAY
+import io.github.twonet.selfish.domain.remorse.RemorseQueue
 import java.text.Collator
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -36,10 +40,13 @@ fun reduce(state: LauncherState, action: Action): Next = when (action) {
         val launchable = apps.mapTo(HashSet()) { it.id }
         // A menu whose app was just uninstalled has nothing left to act on.
         val overlays = state.overlays.filter { it !is Overlay.ContextMenu || it.target.app in launchable }
-        val next = state.copy(
-            apps = apps,
-            layout = state.layout?.let { CatalogReconciler.reconcile(it, apps) },
-            overlays = if (overlays.size == state.overlays.size) state.overlays else overlays,
+        // A folder dissolved by the change closes too (FR-FOLD-06).
+        val next = pruneOverlays(
+            state.copy(
+                apps = apps,
+                layout = state.layout?.let { CatalogReconciler.reconcile(it, apps) },
+                overlays = if (overlays.size == state.overlays.size) state.overlays else overlays,
+            ),
         )
         // Without a saved layout this is a first run: its layout needs the
         // default apps, looked up once the catalog has something in it
@@ -140,6 +147,86 @@ fun reduce(state: LauncherState, action: Action): Next = when (action) {
     is Action.OpenAppInfo -> Next(closeContextMenu(state), listOf(Effect.OpenAppInfo(action.app)))
 
     is Action.Uninstall -> Next(closeContextMenu(state), listOf(Effect.RequestUninstall(action.app)))
+
+    // Only in the App Grid, and not while the folder's removal is waiting
+    // (FR-FOLD-03, FR-FOLD-07). One folder is open at a time.
+    is Action.OpenFolder -> {
+        val exists = state.layout?.let { LayoutRules.findFolder(it, action.folder) } != null
+        val open = state.overlays.lastOrNull() == Overlay.Folder(action.folder)
+        if (state.layer != Layer.AppGrid || !exists || open || state.pendingRemoval == action.folder) {
+            Next(state)
+        } else {
+            val closed = closeFolder(closeContextMenu(state))
+            Next(closed.copy(overlays = closed.overlays + Overlay.Folder(action.folder)))
+        }
+    }
+
+    Action.CloseFolder -> Next(closeFolder(state))
+
+    is Action.AddToFolder ->
+        if (state.pendingRemoval == action.folder) {
+            Next(state)
+        } else {
+            Next(closeContextMenu(state.editLayout { LayoutRules.addToFolder(it, action.app, action.folder) }))
+        }
+
+    // The panel closes as the app leaves it; the drag carries on in the grid.
+    is Action.TakeOutOfFolder ->
+        Next(closeFolder(state).editLayout { LayoutRules.removeFromFolder(it, action.app, action.to) })
+
+    is Action.MoveInFolder ->
+        Next(closeContextMenu(state.editLayout { LayoutRules.moveInFolder(it, action.app, action.to) }))
+
+    is Action.RenameFolder -> Next(state.editLayout { LayoutRules.renameFolder(it, action.folder, action.name) })
+
+    // The folder stays until the timer runs out, so the banner can cancel
+    // it; a removal already waiting runs at once (FR-FOLD-07, DESIGN §4.6).
+    is Action.RemoveFolder -> {
+        val exists = state.layout?.let { LayoutRules.findFolder(it, action.folder) } != null
+        if (!exists || state.pendingRemoval == action.folder) {
+            Next(state)
+        } else {
+            val number = state.remorses + 1
+            val started = RemorseQueue.start(state.remorse, Destructive.RemoveFolder(action.folder), number)
+            val committed = started.committed?.let { commit(state, it) } ?: state
+            Next(
+                closeFolder(committed).copy(remorse = started.pending, remorses = number),
+                listOf(Effect.DispatchAfter(REMORSE_DELAY, Action.RemorseDue(number))),
+            )
+        }
+    }
+
+    Action.CancelRemorse -> if (state.remorse == null) Next(state) else Next(state.copy(remorse = null))
+
+    // A timer whose action was cancelled, or committed early, runs nothing.
+    is Action.RemorseDue ->
+        RemorseQueue.due(state.remorse, action.number)?.let { Next(commit(state.copy(remorse = null), it)) } ?: Next(state)
+}
+
+/** Runs the destructive [action] whose remorse timer is over (FR-GEST-06). */
+private fun commit(state: LauncherState, action: Destructive): LauncherState = when (action) {
+    is Destructive.RemoveFolder -> state.editLayout { LayoutRules.removeFolder(it, action.folder) }
+}
+
+/**
+ * [state] with the topmost folder closed, along with anything open over it,
+ * or [state] itself if no folder is open.
+ */
+private fun closeFolder(state: LauncherState): LauncherState {
+    val at = state.overlays.indexOfLast { it is Overlay.Folder }
+    return if (at < 0) state else state.copy(overlays = state.overlays.take(at))
+}
+
+/**
+ * [state] without the overlay of a folder that no longer exists, for
+ * example one left with a single app, which dissolved (FR-FOLD-06), and
+ * without anything open over it.
+ */
+private fun pruneOverlays(state: LauncherState): LauncherState {
+    if (state.overlays.none { it is Overlay.Folder }) return state
+    val folders = state.layout?.grid.orEmpty().mapNotNullTo(HashSet()) { (it as? GridItem.Folder)?.id }
+    val gone = state.overlays.indexOfFirst { it is Overlay.Folder && it.id !in folders }
+    return if (gone < 0) state else state.copy(overlays = state.overlays.take(gone))
 }
 
 /** [this] with every context menu closed, or [this] itself if none is open. */
@@ -154,9 +241,12 @@ private fun closeContextMenu(state: LauncherState): LauncherState =
 private inline fun LauncherState.editLayout(edit: (Layout) -> Layout): LauncherState =
     layout?.let { withLayout(edit(it)) } ?: this
 
-/** [this] with [layout], keeping the same instance when nothing changed. */
+/**
+ * [this] with [layout], keeping the same instance when nothing changed. A
+ * folder that the change removed closes.
+ */
 private fun LauncherState.withLayout(layout: Layout): LauncherState =
-    if (layout == this.layout) this else copy(layout = layout)
+    if (layout == this.layout) this else pruneOverlays(copy(layout = layout))
 
 /**
  * On a first run, offers once per process to become the default Home app

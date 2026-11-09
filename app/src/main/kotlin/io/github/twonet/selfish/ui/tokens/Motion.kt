@@ -1,10 +1,12 @@
 package io.github.twonet.selfish.ui.tokens
 
 import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import kotlin.time.Duration
 
 /**
  * The durations of SRS §4.9, in milliseconds, the release spring and the
@@ -32,6 +34,23 @@ object Motion {
      * enter and exit easings.
      */
     fun <T> reflow(): FiniteAnimationSpec<T> = tween(MEDIUM_MILLIS)
+
+    /**
+     * A folder expanding from its tile into its panel and collapsing back
+     * into it, and the dim behind it (FR-FOLD-03, FR-ANIM-07). #13 adds the
+     * enter and exit easings.
+     */
+    fun <T> folder(): FiniteAnimationSpec<T> = tween(MEDIUM_MILLIS)
+
+    /**
+     * The remorse banner's bar, which shrinks at an even pace over the whole
+     * of the timer's [duration] (FR-GEST-06, FR-ANIM-12).
+     */
+    fun countdown(duration: Duration): FiniteAnimationSpec<Float> =
+        tween(durationMillis = duration.inWholeMilliseconds.toInt(), easing = LinearEasing)
+
+    /** How long the chosen pulley menu item flashes before it runs (FR-ANIM-09). */
+    const val PULLEY_FLASH_MILLIS = SHORT_MILLIS.toLong()
 
     /**
      * After a drag is released: critically damped, so it never visibly
