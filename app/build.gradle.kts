@@ -69,12 +69,13 @@ dependencies {
     testImplementation(libs.kotlin.test)
 }
 
-// BackupRulesTest and ThemeRulesTest read resources and the manifest straight
-// from src/main. Make them test inputs, or an edit to them would leave the
-// tests UP-TO-DATE.
+// BackupRulesTest, ThemeRulesTest and ManifestRulesTest read resources and
+// the manifest straight from src/main. Make them test inputs, or an edit to
+// them would leave the tests UP-TO-DATE.
 tasks.withType<Test>().configureEach {
     inputs.dir("src/main/res/xml").withPropertyName("backupRules").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.dir("src/main/res/values").withPropertyName("themes").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir("src/main/res/mipmap-anydpi").withPropertyName("launcherIcon").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.file("src/main/AndroidManifest.xml").withPropertyName("manifest").withPathSensitivity(PathSensitivity.RELATIVE)
 }
 

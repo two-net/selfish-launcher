@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- A launchable app the tests can make appear and disappear by
+             enabling and disabling it (LauncherAppsCatalogTest). Disabled
+             until a test enables it, so it never shows in a real launcher. -->
+        <activity
+            android:name="io.github.twonet.selfish.adapters.apps.StubLauncherActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:label="Selfish stub">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

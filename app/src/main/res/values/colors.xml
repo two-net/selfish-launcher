@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The launcher icon's background: the Light highlightDefault token
+         (DESIGN §6.5). Colors inside the app live in ui/tokens; this one is
+         drawn by the system, outside Compose. -->
+    <color name="ic_launcher_background">#005A70</color>
+</resources>

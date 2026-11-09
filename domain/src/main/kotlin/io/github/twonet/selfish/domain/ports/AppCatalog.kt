@@ -18,6 +18,12 @@ interface AppCatalog {
      */
     fun apps(): Flow<List<AppEntry>>
 
+    /**
+     * [app]'s icon rendered at [sizePx] square, or `null` if it can't be
+     * rendered (FR-GEN-06, FR-GEN-10, UI-05). Main-safe.
+     */
+    suspend fun icon(app: AppId, sizePx: Int): AppIconImage?
+
     /** Starts [app], growing its window from [from] when given (FR-GEN-05, FR-ANIM-02). */
     suspend fun launch(app: AppId, from: Bounds?)
 
@@ -41,6 +47,36 @@ interface AppCatalog {
 }
 
 data class AppShortcut(val id: String, val label: String)
+
+/**
+ * An app icon as plain pixels, so the Domain stays free of platform image
+ * types (AR-01, DESIGN §5.1). Pixels are ARGB, row by row.
+ *
+ * Not a data class: arrays compare by identity.
+ */
+class AppIconImage(
+    val width: Int,
+    val height: Int,
+    val argb: IntArray,
+    /**
+     * Whether the icon is full-bleed and may be clipped to the launcher's
+     * one icon shape (UI-05), as adaptive icons are. Other icons are drawn
+     * as they are.
+     */
+    val shaped: Boolean,
+    /**
+     * The profile badge, such as the work badge (FR-GEN-10), as a layer of
+     * the same size drawn over the icon without clipping. `null` for apps
+     * of the device's main profile.
+     */
+    val badge: IntArray? = null,
+) {
+    init {
+        require(width > 0 && height > 0) { "Empty icon" }
+        require(argb.size == width * height) { "Expected ${width * height} pixels, got ${argb.size}" }
+        require(badge == null || badge.size == argb.size) { "The badge must be the size of the icon" }
+    }
+}
 
 data class DefaultApps(
     val phone: AppId? = null,

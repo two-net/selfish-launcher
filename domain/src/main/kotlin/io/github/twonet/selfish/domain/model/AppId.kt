@@ -18,4 +18,9 @@ data class AppId(
 data class AppEntry(
     val id: AppId,
     val label: String,
+    /**
+     * Changes whenever the app's package is updated or changed, so its icon
+     * is loaded again (FR-GEN-06). Only meaningful within one process.
+     */
+    val version: Long = 0,
 )

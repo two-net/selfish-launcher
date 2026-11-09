@@ -2,25 +2,21 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Package visibility for LauncherApps (DESIGN §5.6; verified by R-4). -->
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LAUNCHER" />
-        </intent>
-    </queries>
+    <!-- Package visibility for LauncherApps is declared by the adapters
+         library, next to LauncherAppsCatalog, and merged in (DESIGN §5.6). -->
 
     <!-- Backup covers layout.json and settings.json only (DESIGN §5.3,
-         checked by BackupRulesTest). The original icon of FR-GEN-01 comes with #5. -->
+         checked by BackupRulesTest). The name and original icon are
+         FR-GEN-01, checked by ManifestRulesTest. -->
     <application
         android:name=".SelfishApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Selfish"
-        tools:ignore="MissingApplicationIcon">
+        android:theme="@style/Theme.Selfish">
 
         <!-- Portrait is a requirement (FR-GEN-09), not an oversight. Android 16+
              ignores it on large screens only. -->

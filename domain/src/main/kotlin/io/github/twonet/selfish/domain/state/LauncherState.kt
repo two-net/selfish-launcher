@@ -23,4 +23,27 @@ data class LauncherState(
      * shows only the wallpaper, so it never flashes empty (FR-GEN-08).
      */
     val restored: Boolean = false,
+    /**
+     * Whether nothing usable was saved when this process started. Unlike
+     * `layout == null`, it stays true after the first-run layout is built.
+     */
+    val firstRun: Boolean = false,
+    /**
+     * The layer on screen. Not saved: after the process is killed, the
+     * launcher opens on Home (FR-GEN-08, DESIGN §3.4).
+     */
+    val layer: Layer = Layer.Home,
+    /** What is open over [layer], bottom to top (FR-GEN-04). */
+    val overlays: List<Overlay> = emptyList(),
+    /** Whether the launcher is on screen: between its `onStart` and `onStop`. */
+    val homeShown: Boolean = false,
+    /** Whether this process has already offered the default Home role (FR-GEN-02). */
+    val defaultHomeOffered: Boolean = false,
+    /**
+     * Whether an app is launching. Further launches are ignored until the
+     * launcher is hidden or [LAUNCH_TIMEOUT] passes (FR-GEN-05).
+     */
+    val launching: Boolean = false,
+    /** How many launches have started, so a stale timeout can be told apart. */
+    val launches: Int = 0,
 )

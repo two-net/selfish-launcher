@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Selfish Launcher's own mark (FR-GEN-01, C-3, C-4): two overlapping
+     rounded glass panes, the launcher's layers over the wallpaper. Both
+     panes sit inside the 66-unit safe zone of the 108-unit adaptive icon,
+     so every device mask shows all of it. Also used as the monochrome
+     layer, which keeps only alpha. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Back pane: x 33 to 63, y 31 to 69, translucent. -->
+    <path
+        android:fillAlpha="0.5"
+        android:fillColor="#FFFFFF"
+        android:pathData="M39,31h18a6,6 0,0 1,6 6v26a6,6 0,0 1,-6 6h-18a6,6 0,0 1,-6 -6v-26a6,6 0,0 1,6 -6z" />
+    <!-- Front pane: x 45 to 75, y 39 to 77, opaque. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M51,39h18a6,6 0,0 1,6 6v26a6,6 0,0 1,-6 6h-18a6,6 0,0 1,-6 -6v-26a6,6 0,0 1,6 -6z" />
+</vector>

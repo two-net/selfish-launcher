@@ -32,9 +32,9 @@ import io.github.twonet.selfish.ui.tokens.Spacing
 import kotlin.math.roundToInt
 
 /**
- * The walking skeleton's only surface: a plain list of every app, rendered
- * from [state]; taps go back as actions (AR-02). #6 and #7 replace it with
- * Home and the App Grid.
+ * The walking skeleton's only surface: a plain list of every launchable app,
+ * rendered from [state] and updated as apps change (FR-GEN-06); taps go back
+ * as actions (AR-02). #6 and #7 replace it with Home and the App Grid.
  *
  * The dim runs edge to edge over the wallpaper, and the list is inset by the
  * system bars, cutouts and rounded corners (UI-07).
@@ -73,7 +73,7 @@ private fun AppRow(app: AppEntry, onClick: (Bounds?) -> Unit) {
             .pressable { onClick(bounds) }
             .padding(horizontal = Spacing.Gutter, vertical = Spacing.Small),
     ) {
-        AppIcon(label = app.label)
+        AppIcon(app)
         LauncherText(text = app.label, maxLines = 1)
     }
 }

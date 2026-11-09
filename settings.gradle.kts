@@ -20,3 +20,4 @@ rootProject.name = "selfish-launcher"
 include(":domain")   // DOMAIN: plain Kotlin/JVM
 include(":adapters") // ADAPTERS: one class per port
 include(":app")      // PRESENTATION + composition root
+include(":systemtest") // On-device system tests of :app, in their own process (never shipped)

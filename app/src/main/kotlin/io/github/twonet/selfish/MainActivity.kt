@@ -1,24 +1,69 @@
 package io.github.twonet.selfish
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.addCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.twonet.selfish.domain.state.Action
+import io.github.twonet.selfish.ui.components.AppIcons
+import io.github.twonet.selfish.ui.components.LocalAppIcons
 import io.github.twonet.selfish.ui.home.HomeScreen
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
 
-/** The one Activity for every launcher surface (DESIGN §6.1). */
+/**
+ * The one Activity for every launcher surface (DESIGN §6.1). It turns the
+ * system's Home and Back into actions, and tells the store when the launcher
+ * is on screen.
+ */
 class MainActivity : ComponentActivity() {
+    private val graph: AppGraph
+        get() = (application as SelfishApp).graph
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val store = (application as SelfishApp).graph.store
+        val store = graph.store
+        graph.attach(this)
+
+        // Always enabled, so Back never leaves the launcher; on bare Home the
+        // store ignores it (FR-GEN-04). This also serves predictive back.
+        onBackPressedDispatcher.addCallback(this) { store.dispatch(Action.Back) }
+
+        // As the Home app in singleTask mode, every Home press arrives here
+        // (FR-GEN-03). The intent that created the Activity doesn't.
+        addOnNewIntentListener { intent ->
+            if (intent.isHomePress()) store.dispatch(Action.HomePressed)
+        }
+
+        val icons = AppIcons(store::icon)
         setContent {
             val state = store.state.collectAsStateWithLifecycle()
             LauncherTheme {
-                HomeScreen(state.value, store::dispatch)
+                CompositionLocalProvider(LocalAppIcons provides icons) {
+                    HomeScreen(state.value, store::dispatch)
+                }
             }
         }
     }
+
+    override fun onStart() {
+        super.onStart()
+        graph.store.dispatch(Action.HomeShown)
+    }
+
+    override fun onStop() {
+        graph.store.dispatch(Action.HomeHidden)
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        graph.detach(this)
+        super.onDestroy()
+    }
+
+    private fun Intent.isHomePress(): Boolean = action == Intent.ACTION_MAIN && hasCategory(Intent.CATEGORY_HOME)
 }

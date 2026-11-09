@@ -112,6 +112,7 @@ selfish-launcher/
 ├── domain/      Kotlin/JVM library    ── DOMAIN
 ├── adapters/    Android library       ── ADAPTERS
 ├── app/         Android application   ── PRESENTATION + composition root
+├── systemtest/  Android test module   ── System tests in their own process (never shipped)
 └── benchmark/   Android test module   ── Macrobenchmarks, baseline profile (never shipped)
 ```
 
@@ -142,6 +143,7 @@ selfish-launcher/
 | `:domain` | Kotlin/JVM library | kotlinx-coroutines-core, kotlinx-serialization-json | Android SDK, `:adapters`, `:app` |
 | `:adapters` | Android library | `:domain` | `:app`, Compose |
 | `:app` | Android application | `:domain`. `:adapters` only from `AppGraph.kt`. | — |
+| `:systemtest` | Android test module, self-instrumenting | `:app` (as the target) | — (not shipped) |
 | `:benchmark` | Android test module | `:app` (as the target) | — (not shipped) |
 
 **Enforcement**
@@ -183,7 +185,7 @@ app/src/main/kotlin/…/
   ui/tokens/      Colors (incl. glass), Type, Spacing, Sizes, Shapes, Motion,
                   LauncherTheme (AR-04, UI-08)
   ui/motion/      LayerGestureController, springs, reduced motion
-  ui/components/  Pressable, LauncherText, Glass, PageHeader, AppIcon, Cover,
+  ui/components/  Pressable, LauncherText, Glass, PageHeader, AppIcon, AppIcons, Cover,
                   PressGlow, PulleyMenu, ContextMenu, RemorseBanner, GestureHint,
                   ReorderableGrid
   ui/home/  ui/grid/  ui/folder/  ui/search/  ui/events/  ui/topmenu/
@@ -203,6 +205,7 @@ app/src/main/kotlin/…/
 - **Pure reducer plus effects.** `reduce(state, action)` returns the new state and a list of `Effect`s, and is a pure function. An effect runner carries out the effects through the ports in the store's coroutine scope and dispatches the results back as actions. Reducer tests need no fakes; effect tests use the port fakes.
 - **Presentation renders state and sends actions.** It collects `state` with `collectAsStateWithLifecycle()` and keeps only transient UI state: drag progress while a gesture is in flight, scroll positions, cursor position and running animations. When a drag settles, it dispatches, for example, `Action.LayerSettled(Layer.AppGrid)`. When the Domain changes the layer (for example on a Home press), Presentation animates toward the new target.
 - **Ports push changes as `Flow`s**: catalog changes, the system dark theme, the animator scale, notifications and access revocations. The store collects them and turns them into actions.
+- **One query: icons.** Icons are pixels to draw, not launcher state, and 300 of them would not fit in state comfortably (NFR-PERF-05). So the store also offers `icon(app, sizePx)`, which asks the `AppCatalog` port and returns plain ARGB pixels (`AppIconImage`). Presentation turns them into bitmaps and caches them (§5.1). The state carries each app's `version`, so an updated app's icon is loaded again (FR-GEN-06).
 - **Persistence.** After each layout or settings change, the store writes the affected document through `LocalStorage`. Writes run on a background dispatcher, consecutive writes are merged, and every write is atomic (§5.3).
   - **Restore first.** `start()` subscribes to the ports at once, because a scheduled run emitted before anyone listens is lost. It holds their events back until `Action.Restored(layout, settings)` has been dispatched, so every feature sees the saved state. `LauncherState.restored` is false until then, and Home shows only the wallpaper (FR-GEN-08).
   - **No saved layout is a first run.** `LauncherState.layout` stays `null` when nothing usable was saved, until the first-run layout is built (§4.2).
@@ -236,9 +239,13 @@ Overlays: Folder(id) · ContextMenu(target) · PulleyMenu(page) · Keyboard     
 
 | Rule | Serves |
 |---|---|
-| `Action.Back` pops the topmost overlay first, then the layer, and stops at Home. On bare Home it changes nothing. | FR-GEN-04, SRS §3.2 |
+| `LauncherState` holds one `layer` and a stack of `overlays` (topmost last). Feature issues add the layers and overlays they build; the rules below don't change. | SRS §3.2 |
+| `Action.Back` pops the topmost overlay first, then the layer, and stops at Home. On bare Home it changes nothing: the reducer returns the same state. | FR-GEN-04, SRS §3.2 |
 | `Action.HomePressed` closes every overlay and layer. On bare Home it changes nothing. | FR-GEN-03 |
-| `Action.Launch(app, bounds)` is ignored while another launch is in progress. In-progress means until the launcher stops or 1 s has passed. | FR-GEN-05 |
+| `Action.Launch(app, bounds)` is ignored while another launch is in progress. In-progress means until the launcher stops (`Action.HomeHidden`) or 1 s has passed. Each launch is numbered and starts an `Effect.DispatchAfter(1 s, LaunchTimedOut(n))`; a timeout whose number isn't the current launch's is ignored, so a stale timer can't end a newer launch early. | FR-GEN-05 |
+| `Effect.DispatchAfter(delay, action)` dispatches an action later in the store's scope, so it fires after the user leaves the launcher. It runs in virtual time in tests. The remorse queue (§4.6) uses it too. | FR-GEN-05, FR-GEST-06 |
+| `LauncherState.firstRun` is true when nothing usable was saved at start. On a first run, once the state is restored *and* the launcher is on screen (`Action.HomeShown`), the reducer emits `Effect.OfferDefaultHome` once per process. The store shows the system prompt only if the launcher isn't the default already. Waiting for the screen matters because the process may have started for the background job, with no Activity to show the prompt over. | FR-GEN-02, FR-ONB-01 |
+| A catalog change reconciles the saved layout (`CatalogReconciler`, §4.2). Without a saved layout, the first run builds it (#6, #19). | FR-GEN-06 |
 | Closing the App Grid clears the search query and hides the keyboard. | FR-SRCH-05 |
 | `Settings` holds every setting from SRS §4.13, with the SRS defaults (for example Appearance = System, Daily Bing wallpaper = On). | FR-SET-01 to FR-SET-17, FR-THM-02 |
 
@@ -261,7 +268,7 @@ Layout operations are pure functions in `LayoutRules` over `Layout(grid: List<Gr
 | `renameFolder`, `removeFolder` | Removing puts the folder's apps back into the grid at its position. | FR-FOLD-04, FR-FOLD-07 |
 | `sortAlphabetically` | Uses a `java.text.Collator` for the device locale. | FR-SET-10 |
 | `firstRun(catalog, defaults)` | Builds an alphabetical grid. Home gets the default phone, messaging, browser and camera apps, where present. | FR-HOME-07, FR-ONB-01, FR-SET-16 |
-| `reconcile(layout, catalog)` | Removes apps that are no longer launchable from the grid, Home and folders without leaving gaps. Appends new apps at the end and dissolves folders left with one app. | FR-GEN-06, FR-GRID-05, FR-GRID-09 |
+| `CatalogReconciler.reconcile(layout, apps)` | Removes apps that are no longer launchable from the grid, Home and folders without leaving gaps. Appends new apps at the end, in catalog order, and dissolves folders left with one app. | FR-GEN-06, FR-GRID-05, FR-GRID-09 |
 
 Invariants checked after every operation in `LayoutRulesTest`:
 
@@ -359,21 +366,25 @@ Each external dependency from AR-03 has exactly one port and one adapter.
 
 | Port (`:domain`) | Adapter (`:adapters`) | Platform APIs | Serves |
 |---|---|---|---|
-| `AppCatalog` | `LauncherAppsCatalog` | **Apps:** `LauncherApps` (`getActivityList`, `Callback`, `startMainActivity`, `startAppDetailsActivity`, `getShortcuts`), `UserManager` profiles and serial numbers. **Icons:** `getBadgedIcon`. **Actions:** the `ACTION_DELETE` intent for uninstall; intents for links, the system Settings app and access screens. **Defaults:** resolves the default phone, messaging, browser and camera apps. | FR-GEN-05, FR-GEN-06, FR-GEN-10, FR-HOME-04, FR-HOME-07, FR-HOME-09, FR-GRID-06, FR-GRID-10, FR-EVT-03, FR-TOP-04 |
+| `AppCatalog` | `LauncherAppsCatalog` | **Apps:** `LauncherApps` (`getActivityList`, `Callback`, `startMainActivity`, `startAppDetailsActivity`, `getShortcuts`), `UserManager` profiles and serial numbers; the locale and managed-profile broadcasts. **Icons:** `LauncherActivityInfo.getIcon`, and `PackageManager.getUserBadgedIcon` for the profile badge. **Actions:** the `ACTION_DELETE` intent for uninstall; intents for links, the system Settings app and access screens. **Defaults:** resolves the default phone, messaging, browser and camera apps. | FR-GEN-05, FR-GEN-06, FR-GEN-10, FR-HOME-04, FR-HOME-07, FR-HOME-09, FR-GRID-06, FR-GRID-10, FR-EVT-03, FR-TOP-04 |
 | `LocalStorage` | `FileStorage` | `filesDir` for layout and settings; `noBackupFilesDir/wallpapers/` for images and the index; `android.util.AtomicFile`. | FR-GEN-07, FR-WP-07, NFR-PRIV-03, NFR-REL-03, NFR-PWR-04 |
 | `SystemWallpaper` | `AndroidSystemWallpaper` | **Validate and crop:** `ImageDecoder` checks the image and decodes only the crop rectangle; `setBitmap` then applies it to `FLAG_SYSTEM`, plus `FLAG_LOCK` if enabled. **Identify:** `getWallpaperId`, `getWallpaperColors`. **Parallax:** `setWallpaperOffsets`. | FR-WP-01, FR-WP-04, FR-WP-05, FR-WP-12, FR-WP-14, FR-AMB-01, FR-AMB-03, FR-ANIM-14 |
 | `BingFeed` | `HttpsBingFeed` | `HttpsURLConnection` and the kotlinx-serialization parser (§5.2) | IF-WP-01 to IF-WP-06, FR-WP-02 |
 | `WallpaperScheduler` | `JobSchedulerWallpaperScheduler` with `WallpaperJobService` | `JobScheduler` (§5.4) | FR-WP-02, FR-WP-06, NFR-PWR-01, NFR-PWR-02, AR-06 |
-| `OsSettings` | `AndroidOsSettings` | **Theme:** `Configuration.uiMode` via `ComponentCallbacks`. **Motion:** `Settings.Global.ANIMATOR_DURATION_SCALE` via a `ContentObserver`. **Network and power:** `ConnectivityManager` (metered status, `restrictBackgroundStatus`), `PowerManager.isPowerSaveMode`. **Clock:** time-tick, time-zone and 12/24-hour changes. **Home role:** `RoleManager` status and request intent. | FR-THM-03, FR-ANIM-15, FR-WP-06, FR-GEN-02, FR-HOME-02, NFR-L10N-02 |
+| `OsSettings` | `AndroidOsSettings` | **Home role:** `RoleManager.isRoleHeld` and `createRequestRoleIntent(ROLE_HOME)`, started *for result* over the visible Activity, because the prompt identifies its caller through `getCallingPackage()`. **Theme:** `Configuration.uiMode` via `ComponentCallbacks`. **Motion:** `Settings.Global.ANIMATOR_DURATION_SCALE` via a `ContentObserver`. **Network and power:** `ConnectivityManager` (metered status, `restrictBackgroundStatus`), `PowerManager.isPowerSaveMode`. **Clock:** time-tick, time-zone and 12/24-hour changes. | FR-THM-03, FR-ANIM-15, FR-WP-06, FR-GEN-02, FR-HOME-02, NFR-L10N-02 |
 | `NotificationSource` (optional) | `ListenerNotificationSource` with `LauncherNotificationListener` | `NotificationListenerService` (active notifications, dismissal, content intents), `NotificationManager.isNotificationListenerAccessGranted` | FR-EVT-04 to FR-EVT-07, FR-GRID-11, NFR-PRIV-05 |
 | `UsageSource` (optional) | `UsageStatsSource` | `UsageStatsManager.queryEvents`, `AppOpsManager.unsafeCheckOpNoThrow` | FR-HOME-10 |
 
 **Implementation notes**
 
-- **Icons.** They are rendered off the main thread at the token icon size, with adaptive icons masked to one shape (UI-05). They are held in an in-memory LRU cache keyed by `AppId` and the app's last update time. The launcher's own package is left out of the App Grid.
+- **App list.** `getActivityList` for every profile, without the launcher's own package. It is queried again after every `LauncherApps.Callback` event, a locale change (names change) and a managed-profile change (FR-GEN-10). A profile that can't be read keeps its last list, or is left out if it was never read: an emptied profile would make the reconciler drop its apps from the layout, and one unreadable profile must not hide the others.
+- **Icons.** `icon(app, sizePx)` renders off the main thread into an ARGB bitmap of the requested size and returns its pixels as an `AppIconImage`, so the Domain stays free of platform image types (AR-01).
+  - An adaptive icon is drawn full-bleed, from its background and foreground layers and without the device's mask, and marked `shaped`. Presentation clips it to the one icon shape (UI-05). Other icons are drawn as they are, keeping their aspect ratio.
+  - Apps of another profile get the system's badge (FR-GEN-10) as a separate full-size layer, made by badging a transparent square, so clipping the icon never clips the badge.
+  - `AppEntry.version` counts each package's change events in this process. Presentation's `AppIcons` caches the converted `ImageBitmap`s in an LRU keyed by `AppId`, version and size, so an updated app's icon is loaded again (FR-GEN-06).
 - **Launch animation** (FR-ANIM-02). `launch(app, bounds)` passes `ActivityOptions.makeScaleUpAnimation(rootView, …bounds)` to `startMainActivity`, so the app's window grows from the tapped icon or cover.
-  - The root view comes from `ForegroundActivity`, a holder that `MainActivity` fills in `onCreate` and clears in `onDestroy`.
-  - The same holder supplies the Activity context for starting intents and the window token for wallpaper offsets.
+  - The root view comes from `ForegroundActivity`, a holder that `MainActivity` fills in `onCreate` and clears in `onDestroy`, through `AppGraph.attach` and `detach`, so it never imports `:adapters`. It keeps a weak reference.
+  - The same holder supplies the Activity for the default-Home prompt (FR-GEN-02), the Activity context for starting intents and the window token for wallpaper offsets.
 - **Cropping is done by the launcher** (FR-WP-04). The image is decoded only inside the crop rectangle and handed to the system at the screen's exact aspect ratio, so OEM handling of crop hints doesn't matter (R-5). When the source is wide enough, the crop keeps up to 5% extra width for the parallax of FR-ANIM-14.
 
 ### 5.2 Network policy (Bing feed)
@@ -436,7 +447,7 @@ URL building, the allowlist and redirect decision, the counting stream and the J
 | `EXPAND_STATUS_BAR` | Normal | Only if FR-TOP-07 ships (R-2) |
 
 - **Notification access** is not a permission the app requests. The listener service declares `BIND_NOTIFICATION_LISTENER_SERVICE`, and the user grants access in system settings after a one-screen explanation (FR-ONB-04).
-- **Package visibility.** There is no `QUERY_ALL_PACKAGES`. A `<queries>` block lists the intents the launcher resolves:
+- **Package visibility.** There is no `QUERY_ALL_PACKAGES`. A `<queries>` block lists the intents the launcher resolves. It lives in the `:adapters` manifest, next to the adapter that needs it, so the adapter's on-device tests run with it; the manifest merger adds it to the app:
   - `MAIN`/`LAUNCHER` for all launchable apps;
   - `DIAL`, `SENDTO smsto:`, `VIEW https:` and `STILL_IMAGE_CAMERA` for the first-run defaults.
   - Whether this is enough for `LauncherApps` is not documented. It is verified first (R-4).
@@ -458,10 +469,10 @@ URL building, the allowlist and redirect decision, the counting stream and the J
   - Status-bar and navigation-bar icons switch between light and dark to suit the surface underneath them (FR-THM-08, FR-HOME-01).
   - The theme's parent has no action bar (UI-03), and the theme sets `soundEffectsEnabled=false`, so no view plays the system click sound (UI-09). `ThemeRulesTest` checks the theme and that the manifest applies it to every activity.
 - **Insets.** Content is padded by `WindowInsets.safeDrawing`, which covers cutouts, rounded corners and system bars (UI-07, NFR-COMP-02). Gestures ignore touches that start inside `WindowInsets.systemGestures` (FR-GEST-04, C-5).
-- **Home press.** `onNewIntent` with `CATEGORY_HOME` dispatches `Action.HomePressed` (FR-GEN-03). When the launcher returns from another app, Home settles in from 96% scale and partial transparency over the Medium duration (FR-ANIM-03).
+- **Home press.** A new intent with `ACTION_MAIN` and `CATEGORY_HOME`, received through `addOnNewIntentListener`, dispatches `Action.HomePressed` (FR-GEN-03). The intent that creates the Activity isn't one. When the launcher returns from another app, Home settles in from 96% scale and partial transparency over the Medium duration (FR-ANIM-03).
 - **Back.** One always-enabled `OnBackPressedCallback` dispatches `Action.Back`, which does nothing on bare Home (FR-GEN-04).
   - This works with predictive back. Predictive back is on by default for apps targeting API 36, and `onBackPressed` is no longer called there. So all back handling goes through `OnBackPressedDispatcher`.
-- **Home-shown trigger.** `onStart` dispatches `Action.HomeShown`, which may trigger a wallpaper check (FR-WP-02).
+- **Shown and hidden.** `onStart` dispatches `Action.HomeShown`, which may offer the default Home role on a first run (FR-GEN-02) and may trigger a wallpaper check (FR-WP-02). `onStop` dispatches `Action.HomeHidden`, which ends the launch guard (FR-GEN-05).
 
 ### 6.2 Layers
 
@@ -509,7 +520,7 @@ The release decision, direction lock and pull-depth mapping are pure functions (
 | `LauncherText` | Text in one of the four roles (display, header, body, label) at primary or secondary emphasis. It takes no color, so body text can't be drawn in the highlight. | UI-04, FR-AMB-04 |
 | `Glass` | A translucent panel in the glass color and shape, for cards, menus and folder panels. | UI-01 |
 | `PageHeader` | Large (header style), full width, `TextAlign.End` so it mirrors in right-to-left languages, in the highlight color, and announced as a heading. | UI-02, FR-EVT-02 |
-| `AppIcon` | Every app icon at the one icon size. Icons that support a shape (adaptive icons) are clipped to the icon shape; without an icon it shows the label's initial on glass. Decorative to screen readers, because the item's label names the app. Loading icons arrives with #5 and #7. | UI-05 |
+| `AppIcon` | Every app icon at the one icon size. Icons that support a shape (adaptive icons) are clipped to the icon shape; a profile badge is drawn over it unclipped. Until the icon has loaded through `AppIcons` (§5.1), or if it can't load, it shows the label's initial on glass. Decorative to screen readers, because the item's label names the app. | UI-05, FR-GEN-10 |
 | `PressGlow` | A Compose `Indication` that draws a highlight-color glow on the first frame of a press and fades it out over the Short duration. | FR-ANIM-04 |
 | Folder panel | A shared-bounds transition from the tile to the panel and back. | FR-FOLD-03, FR-ANIM-07 |
 | `GestureHint` | A glowing touch point that traces a gesture in the tutorial and in contextual hints. | FR-ANIM-13, FR-ONB-02 |
@@ -642,7 +653,7 @@ Every component that ships, every build tool, and every library deliberately lef
 |---|---|---|---|
 | **U** — JVM unit | `domain/src/test`; pure code in `adapters/src/test` and `app/src/test` | JVM, with no device (NFR-MNT-01) | Every PR |
 | **A** — Adapter, instrumented | `adapters/src/androidTest` | Emulator (Gradle Managed Device), at API 29 and the latest level | Every PR |
-| **I** — UI, instrumented | `app/src/androidTest`: Compose UI tests and UiAutomator | Emulator, with gesture and 3-button navigation | Every PR |
+| **I** — UI, instrumented | `app/src/androidTest`: Compose UI tests. `systemtest/`: UiAutomator scenarios that cross app boundaries, self-instrumenting so they run in their own process and can kill the launcher's | Emulator or device, with gesture and 3-button navigation | Every PR |
 | **P** — Performance | `benchmark/`: Macrobenchmark with 300 stub apps installed | Reference device (Q-2), at 60 Hz and 120 Hz | Before each release |
 | **S** — Stress | `adb shell monkey` for 8 hours on the release build | Reference device | Before each release |
 | **B** — Build check | Gradle tasks run by `./gradlew check` | CI | Every PR |
@@ -672,14 +683,14 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 
 | Requirements | Level | Verified by |
 |---|---|---|
-| FR-GEN-01 | R | Name and original icon appear in the app list, the Home chooser and About. |
-| FR-GEN-02 | I | `SystemIntegrationTest`: first launch while not the default Home app shows the role prompt. |
-| FR-GEN-03, FR-GEN-04 | U, I | `LauncherReducerTest`: Back and Home order. `SystemIntegrationTest`: Home and Back with layers open. |
-| FR-GEN-05 | U | `LauncherReducerTest`: launch guard. |
-| FR-GEN-06 | U, A | `CatalogReconcilerTest`. `LauncherAppsCatalogTest`: installs, updates, disables and removes a test APK. |
+| FR-GEN-01 | U, R | `ManifestRulesTest`: label and adaptive icon. Name and original icon appear in the app list, the Home chooser and About. |
+| FR-GEN-02 | U, I | `LauncherReducerTest`, `LauncherStoreTest`: the offer. `ManifestRulesTest`: the Home filter. `SystemIntegrationTest`: first launch while not the default Home app shows the role prompt. |
+| FR-GEN-03, FR-GEN-04 | U, I | `LauncherReducerTest`: Back and Home order. `SystemIntegrationTest`: Home and Back on Home; with layers open once #7, #10 and #11 add them. |
+| FR-GEN-05 | U | `LauncherReducerTest`, `LauncherStoreTest`: launch guard. |
+| FR-GEN-06 | U, A, R | `CatalogReconcilerTest`. `LauncherAppsCatalogTest`: enabling and disabling a stub activity, and every launchable app is listed (R-4). Review item: real installs, updates and uninstalls. |
 | FR-GEN-07 | U, A | `PersistenceTest`: round trip and migrations. `FileStorageTest`: atomic writes. |
-| FR-GEN-08 | I | `SystemIntegrationTest`: kill the process, reopen on Home with the saved layout. |
-| FR-GEN-09 | R | The manifest declares portrait. |
+| FR-GEN-08 | U, I | `LauncherStoreTest`: a new store opens on Home with the saved layout. `SystemIntegrationTest`: kill the process, Home reopens the launcher. |
+| FR-GEN-09 | U | `ManifestRulesTest`: the manifest declares portrait. |
 
 **Home (SRS §4.2)**
 
@@ -920,7 +931,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 | R-1 | Window blur-behind may need a translucent window, and changing its radius on every frame may drop frames (NFR-PERF-02). The official blur guide could not be checked while writing this design. | A spike in the first UI milestone, measured with `FrameTimingBenchmark`. If it falls short, set the blur only at rest (closed or open) and animate only the dim. Dim-only is already the fallback (NFR-COMP-03). |
 | R-2 | FR-TOP-07 (Could) can only open the notification shade through a non-SDK interface (`StatusBarManager.expandNotificationsPanel` with `EXPAND_STATUS_BAR`), which future Android versions may block. | Ship the setting only if it works on the target API level. Otherwise hide it. No M or S requirement depends on it. |
 | R-3 | The Bing feed is undocumented, and its terms of use are unclear (Q-3, A-1). | All Bing knowledge is confined to `adapters/bing`. The launcher keeps working from its cache (FR-WP-11). If legal review requires, the feature can ship turned off. |
-| R-4 | The Android documentation doesn't say whether `LauncherApps.getActivityList` is filtered by package visibility for apps without `QUERY_ALL_PACKAGES`. | First scaffold: an instrumented test on API 30+ compares the result, with only the `<queries>` block of §5.6, against `pm list packages`. If apps are missing, add `QUERY_ALL_PACKAGES`, justify it (a launcher must see all launchable apps) and update §5.6 and `checkPermissions`. |
+| R-4 | The Android documentation doesn't say whether `LauncherApps.getActivityList` is filtered by package visibility for apps without `QUERY_ALL_PACKAGES`. | `LauncherAppsCatalogTest` (#5), run on an API 30+ device, compares the result, with only the `<queries>` block of §5.6, against `cmd package query-activities` for `MAIN`/`LAUNCHER`. If apps are missing, add `QUERY_ALL_PACKAGES`, justify it (a launcher must see all launchable apps) and update §5.6 and `checkPermissions`. **Result (#5):** passed on API 36 (Galaxy S22, Android 16): every launchable app is listed, so `QUERY_ALL_PACKAGES` isn't needed. |
 | R-5 | OEMs handle wallpapers differently: some ignore crop hints, some zoom, and some recolor system UI from the wallpaper (A-4). | The launcher crops the image itself (§5.1), so crop hints are never relied on. Test on at least two OEM devices besides the reference device. |
 | R-6 | Compose and its dependencies could push the APK toward the 10 MB budget (NFR-PERF-07). | `checkApkSize` runs from the first scaffold onward. Material is excluded, and R8 full mode is on (TD-05). |
 
@@ -944,7 +955,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 
 1. **Scaffold the project.** Replace `Cargo.toml`, `Cargo.lock` and `src/` with the Gradle project of §3: `:domain`, `:adapters`, `:app` and `:benchmark`, a version catalog and an Android `.gitignore`. *Done in issue #2, except `:benchmark`, which arrives with the performance work (#20).*
 2. **Add the build checks** of §8.2: `checkTraceability`, `checkDependencies`, `checkPermissions` and `checkApkSize`. *`checkDependencies` and Lint are done (#2); the others come with #27, #23 and #20.*
-3. **Run spikes R-1 (blur) and R-4 (package visibility)** before building the UI on top of them.
+3. **Run spikes R-1 (blur) and R-4 (package visibility)** before building the UI on top of them. *R-4 is done (#5, `LauncherAppsCatalogTest`): the `<queries>` block is enough.*
 4. **Create `REVIEW-CHECKLIST.md`** from the R rows of §8.3 and §8.4. *Started in #2 with the architecture items; each feature issue adds its own.*
 5. **Add the CI workflow** of §8.5.
 

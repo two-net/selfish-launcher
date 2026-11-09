@@ -4,6 +4,7 @@ import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.AppId
 import io.github.twonet.selfish.domain.model.Bounds
 import io.github.twonet.selfish.domain.ports.AppCatalog
+import io.github.twonet.selfish.domain.ports.AppIconImage
 import io.github.twonet.selfish.domain.ports.AppShortcut
 import io.github.twonet.selfish.domain.ports.DefaultApps
 import io.github.twonet.selfish.domain.ports.SystemScreen
@@ -15,6 +16,7 @@ class FakeAppCatalog(apps: List<AppEntry> = emptyList()) : AppCatalog {
     val installed = MutableStateFlow(apps)
     var shortcutsByApp: Map<AppId, List<AppShortcut>> = emptyMap()
     var defaults: DefaultApps = DefaultApps()
+    val icons = mutableMapOf<AppId, AppIconImage>()
 
     val launched = mutableListOf<Pair<AppId, Bounds?>>()
     val launchedShortcuts = mutableListOf<Pair<AppId, String>>()
@@ -23,6 +25,8 @@ class FakeAppCatalog(apps: List<AppEntry> = emptyList()) : AppCatalog {
     val openedScreens = mutableListOf<SystemScreen>()
 
     override fun apps(): Flow<List<AppEntry>> = installed
+
+    override suspend fun icon(app: AppId, sizePx: Int): AppIconImage? = icons[app]
 
     override suspend fun launch(app: AppId, from: Bounds?) {
         launched += app to from

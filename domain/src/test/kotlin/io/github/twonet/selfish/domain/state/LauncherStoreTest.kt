@@ -3,6 +3,7 @@ package io.github.twonet.selfish.domain.state
 import io.github.twonet.selfish.domain.Verifies
 import io.github.twonet.selfish.domain.fakes.FakeAppCatalog
 import io.github.twonet.selfish.domain.fakes.FakeLocalStorage
+import io.github.twonet.selfish.domain.fakes.FakeOsSettings
 import io.github.twonet.selfish.domain.fakes.FakeWallpaperScheduler
 import io.github.twonet.selfish.domain.fakes.fakePorts
 import io.github.twonet.selfish.domain.model.AppEntry
@@ -15,6 +16,7 @@ import io.github.twonet.selfish.domain.model.Settings
 import io.github.twonet.selfish.domain.persist.LayoutDoc
 import io.github.twonet.selfish.domain.persist.SettingsDoc
 import io.github.twonet.selfish.domain.ports.AppCatalog
+import io.github.twonet.selfish.domain.ports.AppIconImage
 import io.github.twonet.selfish.domain.ports.DocName
 import io.github.twonet.selfish.domain.ports.LocalStorage
 import io.github.twonet.selfish.domain.ports.NotificationSource
@@ -24,14 +26,17 @@ import io.github.twonet.selfish.domain.ports.UsageSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 
 /** The store runs on fakes, with the optional sources disabled. */
 @Verifies("AR-02", "AR-03", "AR-09")
@@ -43,9 +48,11 @@ class LauncherStoreTest {
     private val catalog = FakeAppCatalog(listOf(maps))
     private val scheduler = FakeWallpaperScheduler()
     private val storage = FakeLocalStorage()
-    private val ports = fakePorts(appCatalog = catalog, localStorage = storage, wallpaperScheduler = scheduler)
+    private val os = FakeOsSettings()
+    private val ports = fakePorts(appCatalog = catalog, localStorage = storage, wallpaperScheduler = scheduler, osSettings = os)
 
-    private val savedLayout = Layout(grid = listOf(GridItem.App(clock.id), GridItem.App(maps.id)), home = listOf(maps.id))
+    // Matches the catalog, so reconciling it at start changes nothing.
+    private val savedLayout = Layout(grid = listOf(GridItem.App(maps.id)), home = listOf(maps.id))
     private val savedSettings = Settings(appearance = AppearanceMode.Dark, gridColumns = 5)
     private val changedLayout = Layout(grid = listOf(GridItem.App(maps.id)))
     private val changedSettings = Settings(showClock = false)
@@ -96,6 +103,86 @@ class LauncherStoreTest {
     }
 
     @Test
+    @Verifies("FR-GEN-05")
+    fun `a launch blocks further launches until it times out`() = runTest {
+        val store = startedStore()
+
+        store.dispatch(Action.Launch(maps.id, null))
+        store.dispatch(Action.Launch(maps.id, null))
+        runCurrent()
+        assertEquals(1, catalog.launched.size)
+
+        advanceTimeBy(LAUNCH_TIMEOUT - 1.milliseconds)
+        runCurrent()
+        assertTrue(store.state.value.launching)
+
+        advanceTimeBy(1.milliseconds)
+        runCurrent()
+        assertFalse(store.state.value.launching)
+
+        store.dispatch(Action.Launch(maps.id, null))
+        runCurrent()
+        assertEquals(2, catalog.launched.size)
+    }
+
+    @Test
+    @Verifies("FR-GEN-02")
+    fun `a first run asks to become the default Home app`() = runTest {
+        os.defaultHome = false
+        val store = startedStore()
+
+        store.dispatch(Action.HomeShown)
+        runCurrent()
+
+        assertEquals(1, os.defaultHomeRequests)
+    }
+
+    @Test
+    @Verifies("FR-GEN-02")
+    fun `no prompt when the launcher already is the default Home app`() = runTest {
+        os.defaultHome = true
+        val store = startedStore()
+
+        store.dispatch(Action.HomeShown)
+        runCurrent()
+
+        assertEquals(0, os.defaultHomeRequests)
+    }
+
+    @Test
+    @Verifies("FR-GEN-02")
+    fun `no prompt after the first run`() = runTest {
+        os.defaultHome = false
+        save(savedLayout, savedSettings)
+        val store = startedStore()
+
+        store.dispatch(Action.HomeShown)
+        runCurrent()
+
+        assertEquals(0, os.defaultHomeRequests)
+    }
+
+    @Test
+    fun `icons come from the app catalog`() = runTest {
+        val icon = AppIconImage(1, 1, intArrayOf(0), shaped = true)
+        catalog.icons[maps.id] = icon
+        val store = startedStore()
+
+        assertSame(icon, store.icon(maps.id, 1))
+        assertNull(store.icon(clock.id, 1))
+    }
+
+    @Test
+    fun `an icon that fails to load is missing, not an error`() = runTest {
+        val failing = object : AppCatalog by catalog {
+            override suspend fun icon(app: AppId, sizePx: Int): AppIconImage = error("App removed")
+        }
+        val store = LauncherStore(backgroundScope, fakePorts(appCatalog = failing))
+
+        assertNull(store.icon(maps.id, 1))
+    }
+
+    @Test
     fun `scheduled runs are finished`() = runTest {
         startedStore()
         var finished = 0
@@ -133,6 +220,34 @@ class LauncherStoreTest {
         assertEquals(savedLayout, state.layout)
         assertEquals(savedSettings, state.settings)
         assertTrue(state.restored)
+    }
+
+    @Test
+    @Verifies("FR-GEN-06", "FR-GEN-07")
+    fun `apps that are gone are removed from the saved layout`() = runTest {
+        save(Layout(grid = listOf(GridItem.App(clock.id), GridItem.App(maps.id)), home = listOf(clock.id)), savedSettings)
+
+        val store = startedStore()
+
+        val expected = Layout(grid = listOf(GridItem.App(maps.id)))
+        assertEquals(expected, store.state.value.layout)
+        assertEquals(expected, LayoutDoc.decodeOrNull(storage.docs[DocName.Layout]))
+    }
+
+    @Test
+    @Verifies("FR-GEN-08")
+    fun `a new process opens on Home with the saved layout`() = runTest {
+        save(savedLayout, savedSettings)
+        val before = startedStore()
+        before.dispatch(Action.Restored(changedLayout, savedSettings))
+        runCurrent()
+
+        // The system ends the process; a new one builds a new store over the same storage.
+        val after = startedStore().state.value
+
+        assertEquals(changedLayout, after.layout)
+        assertEquals(Layer.Home, after.layer)
+        assertEquals(emptyList(), after.overlays)
     }
 
     @Test

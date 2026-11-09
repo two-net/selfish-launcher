@@ -1,12 +1,15 @@
 package io.github.twonet.selfish.domain.state
 
+import io.github.twonet.selfish.domain.model.AppId
 import io.github.twonet.selfish.domain.persist.LayoutDoc
 import io.github.twonet.selfish.domain.persist.SettingsDoc
 import io.github.twonet.selfish.domain.persist.saveTo
+import io.github.twonet.selfish.domain.ports.AppIconImage
 import io.github.twonet.selfish.domain.ports.DocName
 import io.github.twonet.selfish.domain.ports.Ports
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +31,9 @@ import kotlinx.coroutines.launch
  *
  * Call [dispatch] from [scope]'s thread. In the app that is the main thread
  * (DESIGN §3.3); reducers are small and pure.
+ *
+ * Besides [state] and [dispatch], the store answers one query, [icon]:
+ * icons are pixels to draw, not launcher state (DESIGN §3.3).
  */
 class LauncherStore(
     private val scope: CoroutineScope,
@@ -59,6 +65,18 @@ class LauncherStore(
         val next = reduce(mutableState.value, action)
         mutableState.value = next.state
         next.effects.forEach { effect -> scope.launch { run(effect) } }
+    }
+
+    /**
+     * [app]'s icon at [sizePx] square, or `null` when it can't be rendered,
+     * in which case Presentation shows a fallback (UI-05). Main-safe.
+     */
+    suspend fun icon(app: AppId, sizePx: Int): AppIconImage? = try {
+        ports.appCatalog.icon(app, sizePx)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
     }
 
     private suspend fun awaitRestored() {
@@ -102,6 +120,12 @@ class LauncherStore(
             when (effect) {
                 is Effect.LaunchApp -> ports.appCatalog.launch(effect.app, effect.from)
                 is Effect.FinishRun -> effect.run.finished()
+                Effect.OfferDefaultHome ->
+                    if (!ports.osSettings.isDefaultHome()) ports.osSettings.requestDefaultHome()
+                is Effect.DispatchAfter -> {
+                    delay(effect.delay)
+                    dispatch(effect.action)
+                }
             }
         } catch (e: CancellationException) {
             throw e

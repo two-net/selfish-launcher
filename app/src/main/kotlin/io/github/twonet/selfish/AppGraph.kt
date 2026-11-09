@@ -1,6 +1,8 @@
 package io.github.twonet.selfish
 
+import android.app.Activity
 import android.content.Context
+import io.github.twonet.selfish.adapters.ForegroundActivity
 import io.github.twonet.selfish.adapters.apps.LauncherAppsCatalog
 import io.github.twonet.selfish.adapters.bing.HttpsBingFeed
 import io.github.twonet.selfish.adapters.notifications.ListenerNotificationSource
@@ -21,13 +23,15 @@ import kotlinx.coroutines.SupervisorJob
  * injection. The store lives as long as the process.
  */
 class AppGraph(context: Context) {
+    private val foreground = ForegroundActivity()
+
     private val ports = Ports(
         appCatalog = LauncherAppsCatalog(context),
         localStorage = FileStorage(context),
         systemWallpaper = AndroidSystemWallpaper(context),
         bingFeed = HttpsBingFeed(),
         wallpaperScheduler = JobSchedulerWallpaperScheduler(context),
-        osSettings = AndroidOsSettings(context),
+        osSettings = AndroidOsSettings(context, foreground),
         // Optional features (AR-09): deleting one means deleting its
         // package and this line, and passing its Disabled object instead.
         notificationSource = ListenerNotificationSource(context),
@@ -38,4 +42,10 @@ class AppGraph(context: Context) {
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
         ports = ports,
     )
+
+    /** Called by the Activity once it is created, so adapters can show system prompts over it (DESIGN §5.1). */
+    fun attach(activity: Activity) = foreground.attach(activity)
+
+    /** Called by the Activity when it is destroyed. */
+    fun detach(activity: Activity) = foreground.detach(activity)
 }
