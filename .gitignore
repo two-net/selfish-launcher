@@ -1,1 +1,15 @@
-/target
+# Gradle
+.gradle/
+build/
+.kotlin/
+
+# Android
+local.properties
+captures/
+
+# IDE
+.idea/
+*.iml
+
+# macOS
+.DS_Store

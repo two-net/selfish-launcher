@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- API 29–30: the same two files as data_extraction_rules.xml (DESIGN §5.3). -->
+<full-backup-content>
+    <include domain="file" path="layout.json" />
+    <include domain="file" path="settings.json" />
+</full-backup-content>
