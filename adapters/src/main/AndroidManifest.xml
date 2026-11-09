@@ -3,11 +3,28 @@
 
     <!-- Package visibility for LauncherAppsCatalog (DESIGN §5.6). Declared
          here rather than in :app so the adapter's own on-device tests run
-         with it; LauncherAppsCatalogTest checks it is enough (R-4). -->
+         with it; LauncherAppsCatalogTest checks it is enough (R-4). The
+         last four resolve the default apps of the first-run Home
+         (FR-HOME-07). -->
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.STILL_IMAGE_CAMERA" />
         </intent>
     </queries>
 

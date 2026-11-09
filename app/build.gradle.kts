@@ -16,6 +16,8 @@ android {
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 1
         versionName = "0.1.0"
+        // Compose UI tests run on a device (level I, DESIGN §8.1).
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -67,6 +69,16 @@ dependencies {
     testImplementation(testFixtures(project(":domain")))
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test)
+
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    androidTestImplementation(testFixtures(project(":domain")))
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.kotlin.test)
+    // The empty Activity that createComposeRule() hosts tests in; debug only,
+    // so it never ships (checkDependencies reads the release classpath).
+    debugImplementation(libs.compose.ui.test.manifest)
 }
 
 // BackupRulesTest, ThemeRulesTest and ManifestRulesTest read resources and

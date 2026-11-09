@@ -1,5 +1,6 @@
 package io.github.twonet.selfish.adapters.apps
 
+import android.app.ActivityOptions
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -7,18 +8,23 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.LauncherActivityInfo
 import android.content.pm.LauncherApps
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Rect
 import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.os.UserHandle
 import android.os.UserManager
+import android.provider.MediaStore
+import io.github.twonet.selfish.adapters.ForegroundActivity
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.AppId
 import io.github.twonet.selfish.domain.model.Bounds
@@ -44,12 +50,16 @@ import kotlin.math.roundToInt
  *
  * [excludedPackage] is left out of the list; it is the launcher itself
  * (DESIGN §5.1). Tests pass `null` to see their own stub activity.
+ * [foreground] supplies the view a launched app's window grows from
+ * (FR-ANIM-02).
  */
 class LauncherAppsCatalog internal constructor(
     context: Context,
     private val excludedPackage: String?,
+    private val foreground: ForegroundActivity = ForegroundActivity(),
 ) : AppCatalog {
-    constructor(context: Context) : this(context, context.applicationContext.packageName)
+    constructor(context: Context, foreground: ForegroundActivity) :
+        this(context, context.applicationContext.packageName, foreground)
 
     private val appContext = context.applicationContext
     private val launcherApps = appContext.getSystemService(LauncherApps::class.java)
@@ -216,13 +226,63 @@ class LauncherAppsCatalog internal constructor(
         val user = userManager.getUserForSerialNumber(app.userSerial) ?: return
         val component = ComponentName(app.packageName, app.activityName)
         val bounds = from?.let { Rect(it.left, it.top, it.right, it.bottom) }
-        // The grow-from-icon animation of FR-ANIM-02 is added with #13.
         withContext(Dispatchers.Main) {
-            launcherApps.startMainActivity(component, user, bounds, null)
+            launcherApps.startMainActivity(component, user, bounds, growFrom(bounds))
         }
     }
 
-    // The members below are filled in by #6 and #7.
+    /**
+     * Options that grow the app's window from [bounds], the tapped icon or
+     * cover (FR-ANIM-02), or `null` without bounds or a visible launcher.
+     * The bounds are in the launcher window's coordinates, which is what
+     * the scale-up animation expects relative to the window's root view.
+     * Call on the main thread, which [ForegroundActivity] needs.
+     */
+    private fun growFrom(bounds: Rect?): Bundle? {
+        if (bounds == null || bounds.isEmpty) return null
+        val root = foreground.current?.window?.decorView ?: return null
+        return ActivityOptions.makeScaleUpAnimation(root, bounds.left, bounds.top, bounds.width(), bounds.height()).toBundle()
+    }
+
+    /**
+     * The apps the device opens for calls, messages, web links and photos,
+     * for the first-run Home (FR-HOME-07). Each is looked up on its own, so
+     * one that fails doesn't lose the others.
+     */
+    override suspend fun defaultApps(): DefaultApps = withContext(Dispatchers.IO) {
+        DefaultApps(
+            phone = defaultFor(Intent(Intent.ACTION_DIAL)),
+            messaging = defaultFor(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:"))),
+            browser = defaultFor(Intent(Intent.ACTION_VIEW, Uri.parse("https://")).addCategory(Intent.CATEGORY_BROWSABLE)),
+            camera = defaultFor(Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)),
+        )
+    }
+
+    /**
+     * The launchable app of the main profile that the system starts for
+     * [intent] without asking, or `null` if there is none. With several
+     * handlers and no default, the system answers with its own resolver,
+     * which has no launchable entry, so it is skipped too. The intents are
+     * declared in the manifest's `<queries>` (DESIGN §5.6).
+     */
+    private fun defaultFor(intent: Intent): AppId? = try {
+        val packageName = appContext.packageManager
+            .resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+            ?.activityInfo
+            ?.packageName
+            ?.takeUnless { it == SYSTEM_PACKAGE || it == excludedPackage }
+        val user = Process.myUserHandle()
+        packageName
+            ?.let { launcherApps.getActivityList(it, user).firstOrNull() }
+            ?.let { AppId(it.componentName.packageName, it.componentName.className, userManager.getSerialNumberForUser(user)) }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
+
+    // The members below are filled in by #7 and, for shortcuts, with
+    // FR-HOME-09 and FR-GRID-10.
 
     override suspend fun openAppInfo(app: AppId) = Unit
 
@@ -232,11 +292,12 @@ class LauncherAppsCatalog internal constructor(
 
     override suspend fun launchShortcut(app: AppId, shortcutId: String, from: Bounds?) = Unit
 
-    override suspend fun defaultApps(): DefaultApps = DefaultApps()
-
     override suspend fun open(screen: SystemScreen) = Unit
 
     private companion object {
+        /** The platform's own package, which holds the intent resolver. */
+        const val SYSTEM_PACKAGE = "android"
+
         /** Broadcasts that change the list without a package event. Only registered receivers get the profile ones. */
         val BROADCASTS = listOf(
             Intent.ACTION_LOCALE_CHANGED,

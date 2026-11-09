@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.flowOf
 /**
  * [UsageSource] over `UsageStatsManager` (DESIGN §5.1). Optional (AR-09):
  * nothing outside this package refers to it except the composition root.
- * Stub until #6.
+ * A stub until recently used covers (FR-HOME-10, Could) are built.
  */
 @Suppress("unused")
 class UsageStatsSource(private val context: Context) : UsageSource {

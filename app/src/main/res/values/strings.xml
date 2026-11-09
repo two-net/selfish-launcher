@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Selfish Launcher</string>
+
+    <!-- Home (SRS §4.2) -->
+    <string name="home_hint_no_covers">Swipe up to see your apps</string>
+    <string name="menu_add_to_home">Add to Home</string>
+    <string name="menu_remove_from_home">Remove from Home</string>
+    <string name="menu_home_full">Home is full. Remove a cover to make room.</string>
+    <!-- The screen-reader action for a long-press, which opens an item's context menu. -->
+    <string name="action_open_menu">Open menu</string>
 </resources>

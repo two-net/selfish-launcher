@@ -1,8 +1,10 @@
 package io.github.twonet.selfish
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.addCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -25,7 +27,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // Dark status-bar icons over Home's light scrim (FR-HOME-01), since
+        // the launcher is always Light until #17 resolves the appearance
+        // (FR-THM-08). The navigation bar keeps the system's own contrast.
+        enableEdgeToEdge(statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT))
         val store = graph.store
         graph.attach(this)
 

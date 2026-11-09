@@ -9,7 +9,11 @@ import io.github.twonet.selfish.domain.model.FolderId
 import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.model.Settings
+import io.github.twonet.selfish.domain.ports.ClockInfo
+import io.github.twonet.selfish.domain.ports.DefaultApps
 import io.github.twonet.selfish.domain.ports.ScheduledRun
+import java.time.Instant
+import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -236,10 +240,161 @@ class LauncherReducerTest {
         assertEquals(Layout(grid = listOf(GridItem.App(app("Maps").id), GridItem.App(app("Clock").id))), next.state.layout)
     }
 
+    // First run (FR-HOME-07)
+
     @Test
-    fun `catalog changes leave a missing layout for the first run`() {
+    @Verifies("FR-HOME-07")
+    fun `catalog changes leave a missing layout for the first run, which looks up the default apps once`() {
         val next = reduce(LauncherState(restored = true, firstRun = true), Action.CatalogChanged(listOf(app("Maps"))))
 
         assertEquals(null, next.state.layout)
+        assertTrue(next.state.resolvingDefaults)
+        assertEquals(listOf<Effect>(Effect.ResolveDefaultApps), next.effects)
+        assertEquals(emptyList(), reduce(next.state, Action.CatalogChanged(listOf(app("Maps"), app("Clock")))).effects)
+    }
+
+    @Test
+    fun `the first run waits for the restore and for apps`() {
+        assertEquals(emptyList(), reduce(LauncherState(), Action.CatalogChanged(listOf(app("Maps")))).effects)
+        assertEquals(emptyList(), reduce(LauncherState(restored = true), Action.CatalogChanged(emptyList())).effects)
+    }
+
+    @Test
+    @Verifies("FR-HOME-07", "FR-ONB-01")
+    fun `the default apps build the first-run layout`() {
+        val apps = listOf(app("Clock"), app("Maps"), app("Phone"))
+        val state = LauncherState(apps = apps, restored = true, firstRun = true, resolvingDefaults = true)
+
+        val next = reduce(state, Action.DefaultAppsResolved(DefaultApps(phone = app("Phone").id)))
+
+        assertEquals(Layout(grid = apps.map { GridItem.App(it.id) }, home = listOf(app("Phone").id)), next.state.layout)
+        assertFalse(next.state.resolvingDefaults)
+    }
+
+    @Test
+    fun `default apps that arrive after a layout exists change nothing`() {
+        val layout = Layout(grid = listOf(GridItem.App(app("Maps").id)))
+        val state = LauncherState(apps = listOf(app("Maps")), layout = layout, restored = true, resolvingDefaults = true)
+
+        val next = reduce(state, Action.DefaultAppsResolved(DefaultApps(phone = app("Maps").id)))
+
+        assertEquals(layout, next.state.layout)
+        assertFalse(next.state.resolvingDefaults)
+    }
+
+    // Home (FR-HOME-02, FR-HOME-05, FR-HOME-06)
+
+    private val maps = app("Maps")
+    private val clock = app("Clock")
+    private val homeState = LauncherState(
+        apps = listOf(clock, maps),
+        layout = Layout(grid = listOf(GridItem.App(clock.id), GridItem.App(maps.id)), home = listOf(maps.id)),
+        restored = true,
+    )
+    private val coverMenu = Overlay.ContextMenu(MenuTarget.Cover(maps.id))
+    private val appMenu = Overlay.ContextMenu(MenuTarget.App(clock.id))
+
+    @Test
+    @Verifies("FR-HOME-03")
+    fun `covers are Home's apps in order, once the catalog knows them`() {
+        val state = homeState.copy(layout = homeState.layout!!.copy(home = listOf(app("Unknown").id, maps.id, clock.id)))
+
+        assertEquals(listOf(maps, clock), state.covers)
+        assertEquals(emptyList(), LauncherState().covers)
+    }
+
+    @Test
+    @Verifies("FR-HOME-06")
+    fun `a long-press opens a context menu, replacing any other`() {
+        val opened = reduce(homeState.copy(overlays = listOf(appMenu)), Action.OpenContextMenu(MenuTarget.Cover(maps.id))).state
+
+        assertEquals(listOf<Overlay>(coverMenu), opened.overlays)
+    }
+
+    @Test
+    @Verifies("FR-GEN-03", "FR-GEN-04")
+    fun `back, home and a tap outside close the context menu`() {
+        val open = homeState.copy(overlays = listOf(coverMenu))
+
+        assertEquals(homeState, reduce(open, Action.Back).state)
+        assertEquals(homeState, reduce(open, Action.HomePressed).state)
+        assertEquals(homeState, reduce(open, Action.CloseContextMenu).state)
+        assertSame(homeState, reduce(homeState, Action.CloseContextMenu).state)
+    }
+
+    @Test
+    fun `launching an app closes the context menu`() {
+        val next = reduce(homeState.copy(overlays = listOf(Overlay.Folder(FolderId(1)), coverMenu)), Action.Launch(clock.id, null))
+
+        assertEquals(listOf<Overlay>(Overlay.Folder(FolderId(1))), next.state.overlays)
+    }
+
+    @Test
+    @Verifies("FR-HOME-05")
+    fun `add to Home adds the cover and closes the menu`() {
+        val next = reduce(homeState.copy(overlays = listOf(appMenu)), Action.AddToHome(clock.id)).state
+
+        assertEquals(listOf(maps.id, clock.id), next.layout!!.home)
+        assertEquals(emptyList(), next.overlays)
+    }
+
+    @Test
+    @Verifies("FR-HOME-05")
+    fun `add to a full Home changes nothing, so the menu can explain`() {
+        val full = homeState.copy(
+            layout = homeState.layout!!.copy(home = (1..9).map { app("x$it").id }),
+            overlays = listOf(appMenu),
+        )
+
+        assertTrue(full.homeFull)
+        assertSame(full, reduce(full, Action.AddToHome(clock.id)).state)
+    }
+
+    @Test
+    @Verifies("FR-HOME-05")
+    fun `remove from Home removes the cover and closes the menu`() {
+        val next = reduce(homeState.copy(overlays = listOf(coverMenu)), Action.RemoveFromHome(maps.id)).state
+
+        assertEquals(emptyList(), next.layout!!.home)
+        assertEquals(homeState.layout!!.grid, next.layout!!.grid)
+        assertEquals(emptyList(), next.overlays)
+    }
+
+    @Test
+    @Verifies("FR-HOME-06")
+    fun `dropping a cover moves it`() {
+        val state = homeState.copy(layout = homeState.layout!!.copy(home = listOf(maps.id, clock.id)))
+
+        val next = reduce(state, Action.MoveCover(clock.id, 0)).state
+
+        assertEquals(listOf(clock.id, maps.id), next.layout!!.home)
+    }
+
+    @Test
+    fun `edits before the first-run layout exists change nothing`() {
+        val state = LauncherState(apps = listOf(maps), restored = true)
+
+        assertSame(state, reduce(state, Action.AddToHome(maps.id)).state)
+        assertSame(state, reduce(state, Action.RemoveFromHome(maps.id)).state)
+        assertSame(state, reduce(state, Action.MoveCover(maps.id, 0)).state)
+    }
+
+    @Test
+    @Verifies("FR-GEN-06")
+    fun `uninstalling the app whose menu is open closes the menu`() {
+        val open = homeState.copy(overlays = listOf(Overlay.Folder(FolderId(1)), coverMenu))
+
+        val next = reduce(open, Action.CatalogChanged(listOf(clock))).state
+
+        assertEquals(listOf<Overlay>(Overlay.Folder(FolderId(1))), next.overlays)
+        assertEquals(emptyList(), next.layout!!.home)
+    }
+
+    @Test
+    @Verifies("FR-HOME-02")
+    fun `the clock is kept in the state`() {
+        val time = ClockInfo(Instant.ofEpochSecond(60), ZoneOffset.UTC, is24Hour = false)
+
+        assertEquals(time, reduce(homeState, Action.ClockChanged(time)).state.clock)
     }
 }

@@ -189,6 +189,7 @@ app/src/main/kotlin/…/
                   PressGlow, PulleyMenu, ContextMenu, RemorseBanner, GestureHint,
                   ReorderableGrid
   ui/home/  ui/grid/  ui/folder/  ui/search/  ui/events/  ui/topmenu/
+                  (until #7, ui/grid/ holds only AppListStandIn, the list below Home)
   ui/settings/  ui/wallpaper/  ui/onboarding/
 ```
 
@@ -201,10 +202,12 @@ app/src/main/kotlin/…/
   - the open layer with its overlays, and the search query;
   - the pending remorse action;
   - the current notifications (when enabled);
-  - the wallpaper status: last successful update, and any wallpaper waiting to be applied.
+  - the wallpaper status: last successful update, and any wallpaper waiting to be applied;
+  - the time for Home's clock.
 - **Pure reducer plus effects.** `reduce(state, action)` returns the new state and a list of `Effect`s, and is a pure function. An effect runner carries out the effects through the ports in the store's coroutine scope and dispatches the results back as actions. Reducer tests need no fakes; effect tests use the port fakes.
 - **Presentation renders state and sends actions.** It collects `state` with `collectAsStateWithLifecycle()` and keeps only transient UI state: drag progress while a gesture is in flight, scroll positions, cursor position and running animations. When a drag settles, it dispatches, for example, `Action.LayerSettled(Layer.AppGrid)`. When the Domain changes the layer (for example on a Home press), Presentation animates toward the new target.
 - **Ports push changes as `Flow`s**: catalog changes, the system dark theme, the animator scale, notifications and access revocations. The store collects them and turns them into actions.
+  - The clock (`OsSettings.clock`) is collected only between `HomeShown` and `HomeHidden`, so its time-tick receiver is registered only while the launcher is on screen (FR-HOME-02, NFR-PWR-02).
 - **One query: icons.** Icons are pixels to draw, not launcher state, and 300 of them would not fit in state comfortably (NFR-PERF-05). So the store also offers `icon(app, sizePx)`, which asks the `AppCatalog` port and returns plain ARGB pixels (`AppIconImage`). Presentation turns them into bitmaps and caches them (§5.1). The state carries each app's `version`, so an updated app's icon is loaded again (FR-GEN-06).
 - **Persistence.** After each layout or settings change, the store writes the affected document through `LocalStorage`. Writes run on a background dispatcher, consecutive writes are merged, and every write is atomic (§5.3).
   - **Restore first.** `start()` subscribes to the ports at once, because a scheduled run emitted before anyone listens is lost. It holds their events back until `Action.Restored(layout, settings)` has been dispatched, so every feature sees the saved state. `LauncherState.restored` is false until then, and Home shows only the wallpaper (FR-GEN-08).
@@ -242,10 +245,13 @@ Overlays: Folder(id) · ContextMenu(target) · PulleyMenu(page) · Keyboard     
 | `LauncherState` holds one `layer` and a stack of `overlays` (topmost last). Feature issues add the layers and overlays they build; the rules below don't change. | SRS §3.2 |
 | `Action.Back` pops the topmost overlay first, then the layer, and stops at Home. On bare Home it changes nothing: the reducer returns the same state. | FR-GEN-04, SRS §3.2 |
 | `Action.HomePressed` closes every overlay and layer. On bare Home it changes nothing. | FR-GEN-03 |
-| `Action.Launch(app, bounds)` is ignored while another launch is in progress. In-progress means until the launcher stops (`Action.HomeHidden`) or 1 s has passed. Each launch is numbered and starts an `Effect.DispatchAfter(1 s, LaunchTimedOut(n))`; a timeout whose number isn't the current launch's is ignored, so a stale timer can't end a newer launch early. | FR-GEN-05 |
+| `Action.Launch(app, bounds)` closes any context menu, and is ignored while another launch is in progress. In-progress means until the launcher stops (`Action.HomeHidden`) or 1 s has passed. Each launch is numbered and starts an `Effect.DispatchAfter(1 s, LaunchTimedOut(n))`; a timeout whose number isn't the current launch's is ignored, so a stale timer can't end a newer launch early. | FR-GEN-05 |
 | `Effect.DispatchAfter(delay, action)` dispatches an action later in the store's scope, so it fires after the user leaves the launcher. It runs in virtual time in tests. The remorse queue (§4.6) uses it too. | FR-GEN-05, FR-GEST-06 |
 | `LauncherState.firstRun` is true when nothing usable was saved at start. On a first run, once the state is restored *and* the launcher is on screen (`Action.HomeShown`), the reducer emits `Effect.OfferDefaultHome` once per process. The store shows the system prompt only if the launcher isn't the default already. Waiting for the screen matters because the process may have started for the background job, with no Activity to show the prompt over. | FR-GEN-02, FR-ONB-01 |
-| A catalog change reconciles the saved layout (`CatalogReconciler`, §4.2). Without a saved layout, the first run builds it (#6, #19). | FR-GEN-06 |
+| A catalog change reconciles the saved layout (`CatalogReconciler`, §4.2), and closes a context menu whose app is gone. | FR-GEN-06 |
+| Without a saved layout, the first catalog change with apps in it sets `resolvingDefaults` and emits `Effect.ResolveDefaultApps`, once. The store asks `AppCatalog.defaultApps()`, falling back to none if that fails, and dispatches `DefaultAppsResolved`, which builds `LayoutRules.firstRun` while there is still no layout. The savers then write it. A layout that couldn't be *read* also gets a first-run layout, but it is never saved over the unread file (§3.3). | FR-HOME-07, FR-ONB-01 |
+| `Overlay.ContextMenu(target)` is the one open context menu; `target` is a `MenuTarget`: a `Cover(app)` on Home or an `App(app)` in the list of apps (#7 adds folders). Opening one replaces any other. Back, Home, a tap outside (`CloseContextMenu`), a drag, a launch and choosing an item close it. | FR-HOME-05, FR-HOME-06, FR-GRID-06 |
+| `AddToHome`, `RemoveFromHome` and `MoveCover` apply the `LayoutRules` operations and close the menu. `AddToHome` on a full Home changes nothing: the menu already says Home is full. | FR-HOME-05, FR-HOME-06 |
 | Closing the App Grid clears the search query and hides the keyboard. | FR-SRCH-05 |
 | `Settings` holds every setting from SRS §4.13, with the SRS defaults (for example Appearance = System, Daily Bing wallpaper = On). | FR-SET-01 to FR-SET-17, FR-THM-02 |
 
@@ -267,7 +273,7 @@ Layout operations are pure functions in `LayoutRules` over `Layout(grid: List<Gr
 | `addToFolder`, `removeFromFolder` | A folder left with one app dissolves into that app, in the folder's place. | FR-FOLD-05, FR-FOLD-06 |
 | `renameFolder`, `removeFolder` | Removing puts the folder's apps back into the grid at its position. | FR-FOLD-04, FR-FOLD-07 |
 | `sortAlphabetically` | Uses a `java.text.Collator` for the device locale. | FR-SET-10 |
-| `firstRun(catalog, defaults)` | Builds an alphabetical grid. Home gets the default phone, messaging, browser and camera apps, where present. | FR-HOME-07, FR-ONB-01, FR-SET-16 |
+| `firstRun(apps, defaults)` | Builds the grid in the order of `apps`, which the store keeps alphabetical. Home gets the default phone, messaging, browser and camera apps, in that order, each once and only if it is in `apps`. | FR-HOME-07, FR-ONB-01, FR-SET-16 |
 | `CatalogReconciler.reconcile(layout, apps)` | Removes apps that are no longer launchable from the grid, Home and folders without leaving gaps. Appends new apps at the end, in catalog order, and dissolves folders left with one app. | FR-GEN-06, FR-GRID-05, FR-GRID-09 |
 
 Invariants checked after every operation in `LayoutRulesTest`:
@@ -277,7 +283,7 @@ Invariants checked after every operation in `LayoutRulesTest`:
 - every cover is a launchable app;
 - at most 9 covers.
 
-With "Covers show: Recently used" (FR-HOME-10, C), Home shows `UsageSource.recent(9)` instead of the favorites list.
+With "Covers show: Recently used" (FR-HOME-10, C), Home shows `UsageSource.recent(9)` instead of the favorites list. *Not built yet: #6 deferred it, and cover quick actions (FR-HOME-09, C), until the Settings page (#18) and the access flow (#19) exist.*
 
 ### 4.3 Wallpaper policy
 
@@ -382,9 +388,10 @@ Each external dependency from AR-03 has exactly one port and one adapter.
   - An adaptive icon is drawn full-bleed, from its background and foreground layers and without the device's mask, and marked `shaped`. Presentation clips it to the one icon shape (UI-05). Other icons are drawn as they are, keeping their aspect ratio.
   - Apps of another profile get the system's badge (FR-GEN-10) as a separate full-size layer, made by badging a transparent square, so clipping the icon never clips the badge.
   - `AppEntry.version` counts each package's change events in this process. Presentation's `AppIcons` caches the converted `ImageBitmap`s in an LRU keyed by `AppId`, version and size, so an updated app's icon is loaded again (FR-GEN-06).
-- **Launch animation** (FR-ANIM-02). `launch(app, bounds)` passes `ActivityOptions.makeScaleUpAnimation(rootView, …bounds)` to `startMainActivity`, so the app's window grows from the tapped icon or cover.
+- **Launch animation** (FR-ANIM-02). `launch(app, bounds)` passes `ActivityOptions.makeScaleUpAnimation(rootView, …bounds)` to `startMainActivity`, so the app's window grows from the tapped icon or cover. Presentation measures the bounds in the window, which fills the screen.
   - The root view comes from `ForegroundActivity`, a holder that `MainActivity` fills in `onCreate` and clears in `onDestroy`, through `AppGraph.attach` and `detach`, so it never imports `:adapters`. It keeps a weak reference.
   - The same holder supplies the Activity for the default-Home prompt (FR-GEN-02), the Activity context for starting intents and the window token for wallpaper offsets.
+- **Default apps** (FR-HOME-07). `defaultApps()` resolves `DIAL`, `SENDTO smsto:`, `VIEW https:` (browsable) and `STILL_IMAGE_CAMERA` with `MATCH_DEFAULT_ONLY`, each on its own. The result counts only if it is a launchable app of the main profile, so the system's resolver, which answers when there are several handlers and no default, is skipped. `LauncherAppsCatalogTest` compares the results with `cmd package resolve-activity`.
 - **Cropping is done by the launcher** (FR-WP-04). The image is decoded only inside the crop rectangle and handed to the system at the screen's exact aspect ratio, so OEM handling of crop hints doesn't matter (R-5). When the source is wide enough, the crop keeps up to 5% extra width for the parallax of FR-ANIM-14.
 
 ### 5.2 Network policy (Bing feed)
@@ -513,10 +520,11 @@ The release decision, direction lock and pull-depth mapping are pure functions (
 | Component | Behavior | Serves |
 |---|---|---|
 | `PulleyMenu` | Overscroll at the top of a page becomes pull distance, with rubber-band resistance. The item index = (pull − first offset) ÷ item spacing. Each change of index plays a tick haptic (`CLOCK_TICK`, or `SEGMENT_TICK` on API 34+). Releasing selects the item, which flashes in the highlight color. A subtle indicator at the top shows that the menu exists. | FR-GEST-05, FR-ANIM-09 |
-| `ContextMenu` | A full-width item inserted after the pressed item's row. `animateItem()` pushes later rows down. Dragging the lifted icon closes the menu and starts a move. | FR-GRID-06, FR-ANIM-08 |
-| `ReorderableGrid` | Long-press lifts the item to 110% with a shadow, and the other items reflow with `animateItem()`. The grid auto-scrolls near its edges. Dropping onto the center of an app creates a folder. This is owned code, because the rules are launcher-specific (§7). | FR-HOME-06, FR-GRID-05, FR-GRID-07, FR-GRID-08, FR-ANIM-05, FR-ANIM-06 |
+| `ContextMenu` | A full-width item inserted after the pressed item's row. `animateItem()` pushes later rows down. Dragging the lifted icon closes the menu and starts a move. When it opens below the visible rows, its list scrolls just enough to show it. A disabled item explains itself, as "Add to Home" does on a full Home. `Modifier.onUnhandledTap` closes it on a tap that nothing else handled. | FR-GRID-06, FR-ANIM-08, FR-HOME-05 |
+| `ReorderableGrid` | Long-press lifts the item to 110% with a shadow, and the other items reflow with `animateItem()`. The order while dragging is transient; only the drop reaches the store, as the item's new index. The lifted item's context menu is a full-span item after its row. *Built in #6 for Home's covers.* #7 adds auto-scrolling near the edges and dropping onto the center of an app to create a folder. This is owned code, because the rules are launcher-specific (§7). | FR-HOME-06, FR-GRID-05, FR-GRID-07, FR-GRID-08, FR-ANIM-05, FR-ANIM-06 |
+| `Cover` | A portrait glass card with the app's icon and name, read as the app's name. | FR-HOME-03, NFR-A11Y-01 |
 | `RemorseBanner` | Shows the action's label and a bar that shrinks toward the deadline held in state. Tapping it dispatches `CancelRemorse`, and the affected item animates back. | FR-GEST-06, FR-ANIM-12 |
-| `Modifier.pressable` | The only way to handle taps and long-presses. It keeps every touch target at least 48 × 48 dp and uses `LocalIndication`, so `PressGlow` reaches every element. | UI-06, FR-ANIM-04 |
+| `Modifier.pressable` | The only way to handle taps and long-presses. It keeps every touch target at least 48 × 48 dp and uses `LocalIndication`, so `PressGlow` reaches every element. With a `LiftDrag`, a long-press lifts the element and the same touch drags it (`detectDragGesturesAfterLongPress`, inside the clickable so it takes the release); screen readers get the lift as the long-click action. | UI-06, FR-ANIM-04, FR-HOME-06 |
 | `LauncherText` | Text in one of the four roles (display, header, body, label) at primary or secondary emphasis. It takes no color, so body text can't be drawn in the highlight. | UI-04, FR-AMB-04 |
 | `Glass` | A translucent panel in the glass color and shape, for cards, menus and folder panels. | UI-01 |
 | `PageHeader` | Large (header style), full width, `TextAlign.End` so it mirrors in right-to-left languages, in the highlight color, and announced as a heading. | UI-02, FR-EVT-02 |
@@ -591,7 +599,7 @@ The release decision, direction lock and pull-depth mapping are pure functions (
 ### 6.8 Localization
 
 - All user-visible text is in `app/src/main/res/values/strings.xml`, with English as the source language. Counts use plurals (NFR-L10N-01).
-- The Home clock and the Events header use `DateFormat.getBestDateTimePattern` and `DateFormat.is24HourFormat` (FR-HOME-02, FR-EVT-02, NFR-L10N-02).
+- The Home clock and the Events header format with ICU skeletons (`android.icu.text.DateFormat.getInstanceForSkeleton`, which is what `DateFormat.getBestDateTimePattern` uses), with the 12- or 24-hour skeleton chosen by `DateFormat.is24HourFormat` in the adapter (FR-HOME-02, FR-EVT-02, NFR-L10N-02).
 - Compose mirrors layouts in right-to-left languages, and headers use `TextAlign.End` (UI-02, NFR-L10N-03). Sideways gestures already work in both directions.
 
 ---
@@ -697,9 +705,9 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 | Requirements | Level | Verified by |
 |---|---|---|
 | FR-HOME-01 | R | Status-bar scrim is legible over light and dark wallpapers. |
-| FR-HOME-02, FR-HOME-04, FR-HOME-08 | I | `HomeTest`: clock shown or hidden; tapping a cover launches; empty-Home hint. |
-| FR-HOME-03, FR-HOME-05, FR-HOME-06 | U, I | `LayoutRulesTest`: columns, add, remove, Home full, move. `HomeTest`: 1 to 9 covers, drag to reorder. |
-| FR-HOME-07 | U | `LayoutRulesTest`: first-run prefill with a fake catalog. |
+| FR-HOME-02, FR-HOME-04, FR-HOME-08 | U, I | `LauncherStoreTest`: the clock is followed only while shown. `HomeTest`: clock shown or hidden, 12- and 24-hour; tapping a cover launches from its bounds; empty-Home hint. |
+| FR-HOME-03, FR-HOME-05, FR-HOME-06 | U, I | `LayoutRulesTest`: columns, add, remove, Home full, move. `LauncherReducerTest`: menus and edits. `HomeTest`: 2 and 3 columns; cover menu removes; list menu adds; Home full; drag to reorder. |
+| FR-HOME-07 | U, A | `LayoutRulesTest`: first-run prefill. `LauncherReducerTest`, `LauncherStoreTest`: looked up once, and a failed lookup still builds a layout. `LauncherAppsCatalogTest`: defaults match the system's and are launchable. |
 
 **App Grid (SRS §4.3)**
 

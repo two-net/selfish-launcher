@@ -5,15 +5,20 @@ import io.github.twonet.selfish.domain.persist.LayoutDoc
 import io.github.twonet.selfish.domain.persist.SettingsDoc
 import io.github.twonet.selfish.domain.persist.saveTo
 import io.github.twonet.selfish.domain.ports.AppIconImage
+import io.github.twonet.selfish.domain.ports.DefaultApps
 import io.github.twonet.selfish.domain.ports.DocName
 import io.github.twonet.selfish.domain.ports.Ports
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -50,7 +55,12 @@ class LauncherStore(
      * The port flows are subscribed right away, because the scheduler's runs
      * are lost if nobody is listening. Their events are held back until the
      * saved state is restored, so features always see it.
+     *
+     * The clock is the exception: it is followed only while the launcher is
+     * on screen, so it never wakes the launcher in the background
+     * (FR-HOME-02, NFR-PWR-02).
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun start() {
         scope.launch { restore() }
         ports.appCatalog.apps()
@@ -58,6 +68,11 @@ class LauncherStore(
             .launchIn(scope)
         ports.wallpaperScheduler.runs
             .onEach { awaitRestored(); dispatch(Action.ScheduledRunDue(it)) }
+            .launchIn(scope)
+        state.map { it.homeShown }
+            .distinctUntilChanged()
+            .flatMapLatest { shown -> if (shown) ports.osSettings.clock else emptyFlow() }
+            .onEach { dispatch(Action.ClockChanged(it)) }
             .launchIn(scope)
     }
 
@@ -106,6 +121,15 @@ class LauncherStore(
         }
     }
 
+    /** The device's default apps, or none if they can't be looked up: a first run must still get its layout. */
+    private suspend fun defaultApps(): DefaultApps = try {
+        ports.appCatalog.defaultApps()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        DefaultApps()
+    }
+
     /** The saved text of [doc], or a failure if storage couldn't be read. */
     private suspend fun read(doc: DocName): Result<String?> = try {
         Result.success(ports.localStorage.read(doc))
@@ -122,6 +146,7 @@ class LauncherStore(
                 is Effect.FinishRun -> effect.run.finished()
                 Effect.OfferDefaultHome ->
                     if (!ports.osSettings.isDefaultHome()) ports.osSettings.requestDefaultHome()
+                Effect.ResolveDefaultApps -> dispatch(Action.DefaultAppsResolved(defaultApps()))
                 is Effect.DispatchAfter -> {
                     delay(effect.delay)
                     dispatch(effect.action)

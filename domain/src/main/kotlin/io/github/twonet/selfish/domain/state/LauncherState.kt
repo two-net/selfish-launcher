@@ -1,8 +1,10 @@
 package io.github.twonet.selfish.domain.state
 
+import io.github.twonet.selfish.domain.layout.LayoutRules
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.model.Settings
+import io.github.twonet.selfish.domain.ports.ClockInfo
 
 /**
  * The single source of truth (AR-02). Presentation renders this and nothing
@@ -46,4 +48,30 @@ data class LauncherState(
     val launching: Boolean = false,
     /** How many launches have started, so a stale timeout can be told apart. */
     val launches: Int = 0,
+    /**
+     * Whether the default apps are being looked up for the first-run layout,
+     * so the lookup starts only once (FR-HOME-07).
+     */
+    val resolvingDefaults: Boolean = false,
+    /**
+     * The time for Home's clock (FR-HOME-02). Updated only while the launcher
+     * is shown, so the clock doesn't wake it in the background (NFR-PWR-02).
+     */
+    val clock: ClockInfo? = null,
 )
+
+/**
+ * Home's covers, in the user's order (FR-HOME-03). A cover whose app the
+ * catalog hasn't reported yet is left out until it does.
+ */
+val LauncherState.covers: List<AppEntry>
+    get() {
+        val home = layout?.home.orEmpty()
+        if (home.isEmpty()) return emptyList()
+        val byId = apps.associateBy { it.id }
+        return home.mapNotNull { byId[it] }
+    }
+
+/** Whether Home has no room for another cover, so "Add to Home" explains instead (FR-HOME-05). */
+val LauncherState.homeFull: Boolean
+    get() = (layout?.home?.size ?: 0) >= LayoutRules.MAX_COVERS

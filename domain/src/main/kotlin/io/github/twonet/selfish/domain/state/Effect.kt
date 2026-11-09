@@ -15,6 +15,13 @@ sealed interface Effect {
     data object OfferDefaultHome : Effect
 
     /**
+     * Looks up the device's default apps and dispatches
+     * [Action.DefaultAppsResolved], with none if the lookup fails, so a first
+     * run always gets its layout (FR-HOME-07).
+     */
+    data object ResolveDefaultApps : Effect
+
+    /**
      * Dispatches [action] after [delay], in the store's scope, so it fires
      * even after the user leaves the launcher. Tests run it in virtual time.
      */

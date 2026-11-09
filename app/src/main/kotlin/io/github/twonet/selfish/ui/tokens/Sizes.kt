@@ -10,4 +10,10 @@ object Sizes {
 
     /** The minimum size of anything that can be touched (UI-06). */
     val MinTouchTarget: Dp = 48.dp
+
+    /** Home's covers are portrait cards (FR-HOME-03): width divided by height. */
+    val CoverAspectRatio: Float = 3f / 4f
+
+    /** The shadow a lifted item casts while it is dragged (FR-ANIM-06). */
+    val LiftElevation: Dp = 8.dp
 }

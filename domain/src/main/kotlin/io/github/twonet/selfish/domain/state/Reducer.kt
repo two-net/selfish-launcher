@@ -1,6 +1,9 @@
 package io.github.twonet.selfish.domain.state
 
+import io.github.twonet.selfish.domain.layout.AddToHomeResult
 import io.github.twonet.selfish.domain.layout.CatalogReconciler
+import io.github.twonet.selfish.domain.layout.LayoutRules
+import io.github.twonet.selfish.domain.model.Layout
 import java.text.Collator
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -30,18 +33,41 @@ fun reduce(state: LauncherState, action: Action): Next = when (action) {
     is Action.CatalogChanged -> {
         val collator = Collator.getInstance()
         val apps = action.apps.sortedWith(compareBy(collator) { it.label })
-        Next(state.copy(apps = apps, layout = state.layout?.let { CatalogReconciler.reconcile(it, apps) }))
+        val launchable = apps.mapTo(HashSet()) { it.id }
+        // A menu whose app was just uninstalled has nothing left to act on.
+        val overlays = state.overlays.filter { it !is Overlay.ContextMenu || it.target.app in launchable }
+        val next = state.copy(
+            apps = apps,
+            layout = state.layout?.let { CatalogReconciler.reconcile(it, apps) },
+            overlays = if (overlays.size == state.overlays.size) state.overlays else overlays,
+        )
+        // Without a saved layout this is a first run: its layout needs the
+        // default apps, looked up once the catalog has something in it
+        // (FR-HOME-07, FR-ONB-01).
+        if (next.restored && next.layout == null && apps.isNotEmpty() && !next.resolvingDefaults) {
+            Next(next.copy(resolvingDefaults = true), listOf(Effect.ResolveDefaultApps))
+        } else {
+            Next(next)
+        }
     }
 
+    is Action.DefaultAppsResolved ->
+        if (state.layout == null) {
+            Next(state.copy(layout = LayoutRules.firstRun(state.apps, action.defaults), resolvingDefaults = false))
+        } else {
+            Next(state.copy(resolvingDefaults = false))
+        }
+
     // One launch at a time: repeated taps while an app is starting are
-    // ignored (FR-GEN-05).
+    // ignored (FR-GEN-05). Launching closes any context menu, so it isn't
+    // still open on return.
     is Action.Launch ->
         if (state.launching) {
             Next(state)
         } else {
             val launch = state.launches + 1
             Next(
-                state.copy(launching = true, launches = launch),
+                closeContextMenu(state).copy(launching = true, launches = launch),
                 listOf(
                     Effect.LaunchApp(action.app, action.from),
                     Effect.DispatchAfter(LAUNCH_TIMEOUT, Action.LaunchTimedOut(launch)),
@@ -76,7 +102,46 @@ fun reduce(state: LauncherState, action: Action): Next = when (action) {
     // #14 adds the wallpaper check here; until then the run ends at once.
     is Action.ScheduledRunDue ->
         Next(state, listOf(Effect.FinishRun(action.run)))
+
+    is Action.ClockChanged -> Next(state.copy(clock = action.clock))
+
+    is Action.OpenContextMenu ->
+        Next(state.copy(overlays = state.overlays.filterNot { it is Overlay.ContextMenu } + Overlay.ContextMenu(action.target)))
+
+    Action.CloseContextMenu -> Next(closeContextMenu(state))
+
+    // Choosing a menu item closes the menu. When Home is full, "Add to Home"
+    // explains that instead of adding, so the menu stays open (FR-HOME-05).
+    is Action.AddToHome -> {
+        val layout = state.layout
+        when (val result = layout?.let { LayoutRules.addToHome(it, action.app) }) {
+            null, AddToHomeResult.HomeFull -> Next(state)
+            is AddToHomeResult.Added -> Next(closeContextMenu(state.withLayout(result.layout)))
+        }
+    }
+
+    is Action.RemoveFromHome ->
+        Next(closeContextMenu(state.editLayout { LayoutRules.removeFromHome(it, action.app) }))
+
+    is Action.MoveCover ->
+        Next(closeContextMenu(state.editLayout { LayoutRules.moveCover(it, action.app, action.to) }))
 }
+
+/** [this] with every context menu closed, or [this] itself if none is open. */
+private fun closeContextMenu(state: LauncherState): LauncherState =
+    if (state.overlays.none { it is Overlay.ContextMenu }) {
+        state
+    } else {
+        state.copy(overlays = state.overlays.filterNot { it is Overlay.ContextMenu })
+    }
+
+/** Applies [edit] to the layout; without a layout (before the first run is built) nothing changes. */
+private inline fun LauncherState.editLayout(edit: (Layout) -> Layout): LauncherState =
+    layout?.let { withLayout(edit(it)) } ?: this
+
+/** [this] with [layout], keeping the same instance when nothing changed. */
+private fun LauncherState.withLayout(layout: Layout): LauncherState =
+    if (layout == this.layout) this else copy(layout = layout)
 
 /**
  * On a first run, offers once per process to become the default Home app

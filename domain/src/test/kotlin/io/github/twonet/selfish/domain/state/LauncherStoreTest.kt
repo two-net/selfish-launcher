@@ -17,6 +17,8 @@ import io.github.twonet.selfish.domain.persist.LayoutDoc
 import io.github.twonet.selfish.domain.persist.SettingsDoc
 import io.github.twonet.selfish.domain.ports.AppCatalog
 import io.github.twonet.selfish.domain.ports.AppIconImage
+import io.github.twonet.selfish.domain.ports.ClockInfo
+import io.github.twonet.selfish.domain.ports.DefaultApps
 import io.github.twonet.selfish.domain.ports.DocName
 import io.github.twonet.selfish.domain.ports.LocalStorage
 import io.github.twonet.selfish.domain.ports.NotificationSource
@@ -30,6 +32,8 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
+import java.time.Instant
+import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -69,10 +73,14 @@ class LauncherStoreTest {
     }
 
     /**
-     * Changes the layout and settings. No editing actions exist yet, so tests
-     * dispatch another [Action.Restored]; savers can't tell the difference.
+     * Replaces the layout and settings at once. No settings action exists
+     * yet (#18), so tests dispatch another [Action.Restored]; savers can't
+     * tell the difference.
      */
     private fun LauncherStore.change(layout: Layout, settings: Settings) = dispatch(Action.Restored(layout, settings))
+
+    /** The first-run layout for the catalog of [maps] alone, with no default apps. */
+    private val firstRunLayout = Layout(grid = listOf(GridItem.App(maps.id)))
 
     @Test
     fun `optional sources default to disabled`() {
@@ -252,13 +260,84 @@ class LauncherStoreTest {
 
     @Test
     @Verifies("FR-GEN-07")
-    fun `with nothing saved the layout waits for the first run and nothing is written`() = runTest {
+    fun `with nothing saved and no apps yet the layout waits for the first run and nothing is written`() = runTest {
+        catalog.installed.value = emptyList()
+
         val state = startedStore().state.value
 
         assertNull(state.layout)
         assertEquals(Settings(), state.settings)
         assertTrue(state.restored)
         assertEquals(emptyList(), storage.writes)
+    }
+
+    @Test
+    @Verifies("FR-HOME-07", "FR-ONB-01", "FR-GEN-07")
+    fun `a first run fills Home with the default apps and saves the layout`() = runTest {
+        catalog.installed.value = listOf(maps, clock)
+        catalog.defaults = DefaultApps(phone = clock.id, camera = AppId("com.gone", "Main", 0))
+
+        val store = startedStore()
+
+        val expected = Layout(grid = listOf(GridItem.App(clock.id), GridItem.App(maps.id)), home = listOf(clock.id))
+        assertEquals(expected, store.state.value.layout)
+        assertFalse(store.state.value.resolvingDefaults)
+        assertEquals(expected, LayoutDoc.decodeOrNull(storage.docs[DocName.Layout]))
+        assertEquals(listOf(DocName.Layout), storage.writes.map { it.first })
+    }
+
+    @Test
+    @Verifies("FR-HOME-07")
+    fun `a first run still gets a layout when the default apps can't be looked up`() = runTest {
+        val failing = object : AppCatalog by catalog {
+            override suspend fun defaultApps(): DefaultApps = error("No package manager")
+        }
+
+        val store = startedStore(fakePorts(appCatalog = failing, localStorage = storage))
+
+        assertEquals(firstRunLayout, store.state.value.layout)
+    }
+
+    @Test
+    @Verifies("FR-HOME-05", "FR-GEN-07")
+    fun `Home edits are saved`() = runTest {
+        save(savedLayout, savedSettings)
+        catalog.installed.value = listOf(maps, clock)
+        val store = startedStore()
+
+        store.dispatch(Action.AddToHome(clock.id))
+        store.dispatch(Action.MoveCover(clock.id, 0))
+        runCurrent()
+
+        assertEquals(listOf(clock.id, maps.id), LayoutDoc.decodeOrNull(storage.docs[DocName.Layout])!!.home)
+    }
+
+    @Test
+    @Verifies("FR-HOME-02", "NFR-PWR-02")
+    fun `the clock is followed only while the launcher is shown`() = runTest {
+        fun at(minute: Long) = ClockInfo(Instant.ofEpochSecond(minute * 60), ZoneOffset.UTC, is24Hour = true)
+        os.clock.value = at(1)
+        val store = startedStore()
+        assertNull(store.state.value.clock)
+
+        store.dispatch(Action.HomeShown)
+        runCurrent()
+        assertEquals(at(1), store.state.value.clock)
+
+        os.clock.value = at(2)
+        runCurrent()
+        assertEquals(at(2), store.state.value.clock)
+
+        store.dispatch(Action.HomeHidden)
+        runCurrent()
+        os.clock.value = at(3)
+        runCurrent()
+        assertEquals(at(2), store.state.value.clock)
+        assertEquals(0, os.clock.subscriptionCount.value)
+
+        store.dispatch(Action.HomeShown)
+        runCurrent()
+        assertEquals(at(3), store.state.value.clock)
     }
 
     @Test
@@ -310,7 +389,9 @@ class LauncherStoreTest {
         storage.docs[DocName.Settings] = "garbage"
         val store = startedStore()
 
-        assertNull(store.state.value.layout)
+        // Nothing usable saved is a first run, whose layout replaces the corrupt one.
+        assertEquals(firstRunLayout, store.state.value.layout)
+        assertEquals(firstRunLayout, LayoutDoc.decodeOrNull(storage.docs[DocName.Layout]))
         assertEquals(Settings(), store.state.value.settings)
 
         store.change(changedLayout, changedSettings)
@@ -330,7 +411,8 @@ class LauncherStoreTest {
         }
         val store = startedStore(fakePorts(appCatalog = catalog, localStorage = failingLayout, wallpaperScheduler = scheduler))
 
-        assertNull(store.state.value.layout)
+        // The launcher stays usable on a first-run layout, which is never saved over the unread file.
+        assertEquals(firstRunLayout, store.state.value.layout)
         assertEquals(savedSettings, store.state.value.settings)
         assertEquals(listOf(maps), store.state.value.apps)
 

@@ -1,34 +1,74 @@
 package io.github.twonet.selfish.adapters.os
 
 import android.app.role.RoleManager
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
+import android.text.format.DateFormat
 import io.github.twonet.selfish.adapters.ForegroundActivity
 import io.github.twonet.selfish.domain.ports.ClockInfo
 import io.github.twonet.selfish.domain.ports.NetworkState
 import io.github.twonet.selfish.domain.ports.OsSettings
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
+import java.time.Instant
+import java.time.ZoneId
 
 /**
  * [OsSettings] over `Configuration.uiMode`, `Settings.Global`,
  * `ConnectivityManager`, `PowerManager`, the time broadcasts and `RoleManager`
- * (DESIGN §5.1). The Home role is real (#5); the rest reports neutral defaults
- * until #13, #14 and #17.
+ * (DESIGN §5.1). The Home role (#5) and the clock (#6) are real; the rest
+ * reports neutral defaults until #13, #14 and #17.
  */
 class AndroidOsSettings(
     context: Context,
     private val foreground: ForegroundActivity,
 ) : OsSettings {
-    private val roleManager = context.applicationContext.getSystemService(RoleManager::class.java)
+    private val appContext = context.applicationContext
+    private val roleManager = appContext.getSystemService(RoleManager::class.java)
 
     override val systemDark: Flow<Boolean?> = flowOf(null)
 
     override val animationsOff: Flow<Boolean> = flowOf(false)
 
-    override val clock: Flow<ClockInfo> = emptyFlow()
+    /**
+     * The time now, then again on every minute and whenever the time, the
+     * time zone or the 12/24-hour setting changes (FR-HOME-02, NFR-L10N-02);
+     * toggling 12/24 hours sends `ACTION_TIME_CHANGED`. The receiver is
+     * registered only while the flow is collected, which the store does only
+     * while the launcher is shown.
+     */
+    override val clock: Flow<ClockInfo> = clockChanges().conflate()
+
+    private fun clockChanges(): Flow<ClockInfo> = callbackFlow {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                trySend(now())
+            }
+        }
+        // All protected system broadcasts, which reach a not-exported
+        // receiver too.
+        val filter = IntentFilter(Intent.ACTION_TIME_TICK)
+        filter.addAction(Intent.ACTION_TIME_CHANGED)
+        filter.addAction(Intent.ACTION_TIMEZONE_CHANGED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            appContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            appContext.registerReceiver(receiver, filter)
+        }
+        // After registering, so a change in between isn't missed.
+        trySend(now())
+        awaitClose { appContext.unregisterReceiver(receiver) }
+    }
+
+    private fun now() = ClockInfo(Instant.now(), ZoneId.systemDefault(), DateFormat.is24HourFormat(appContext))
 
     override suspend fun networkState(): NetworkState =
         NetworkState(connected = false, metered = true, dataSaver = false)

@@ -26,7 +26,7 @@ class AppGraph(context: Context) {
     private val foreground = ForegroundActivity()
 
     private val ports = Ports(
-        appCatalog = LauncherAppsCatalog(context),
+        appCatalog = LauncherAppsCatalog(context, foreground),
         localStorage = FileStorage(context),
         systemWallpaper = AndroidSystemWallpaper(context),
         bingFeed = HttpsBingFeed(),

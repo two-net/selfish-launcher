@@ -8,6 +8,7 @@ import android.os.Process
 import android.os.UserManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import io.github.twonet.selfish.adapters.ForegroundActivity
 import io.github.twonet.selfish.domain.Verifies
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.AppId
@@ -96,7 +97,7 @@ class LauncherAppsCatalogTest {
         setStub(enabled = true)
         assertNotNull(catalog.apps().awaitFirst { it.stub() != null }.stub())
 
-        val apps = withTimeout(TIMEOUT) { LauncherAppsCatalog(context).apps().first() }
+        val apps = withTimeout(TIMEOUT) { LauncherAppsCatalog(context, ForegroundActivity()).apps().first() }
 
         assertTrue(apps.none { it.id.packageName == context.packageName })
     }
@@ -134,6 +135,44 @@ class LauncherAppsCatalogTest {
         assertTrue(icon.argb.any { it != 0 }, "The icon is blank")
         assertNull(icon.badge, "Apps of the main profile have no badge")
     }
+
+    /**
+     * The default apps match what the system itself resolves for each
+     * intent, which also shows the `<queries>` block is enough to see them,
+     * and each one is a launchable app (FR-HOME-07).
+     */
+    @Test
+    @Verifies("FR-HOME-07")
+    fun defaultAppsAreTheSystemsDefaultsAndLaunchable() = runBlocking {
+        val launchable = withTimeout(TIMEOUT) { catalog.apps().first() }.map { it.id }
+
+        val defaults = catalog.defaultApps()
+
+        val expected = mapOf(
+            "phone" to systemDefault("-a android.intent.action.DIAL"),
+            "messaging" to systemDefault("-a android.intent.action.SENDTO -d smsto:"),
+            "browser" to systemDefault("-a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d https://"),
+            "camera" to systemDefault("-a android.media.action.STILL_IMAGE_CAMERA"),
+        ).mapValues { (_, pkg) -> pkg?.takeIf { p -> launchable.any { it.packageName == p } } }
+        val actual = mapOf(
+            "phone" to defaults.phone,
+            "messaging" to defaults.messaging,
+            "browser" to defaults.browser,
+            "camera" to defaults.camera,
+        )
+
+        assertEquals(expected, actual.mapValues { it.value?.packageName })
+        actual.values.filterNotNull().forEach { assertTrue(it in launchable, "$it is not a launchable app") }
+    }
+
+    /** The package the system starts for an intent without asking, or `null` if it would ask or has nothing. */
+    private fun systemDefault(intent: String): String? =
+        shell("cmd package resolve-activity --brief --user current $intent")
+            .lines()
+            .lastOrNull { it.isNotBlank() }
+            ?.let { ComponentName.unflattenFromString(it.trim()) }
+            ?.packageName
+            ?.takeUnless { it == "android" }
 
     @Test
     fun anAppThatIsGoneHasNoIcon() = runBlocking {

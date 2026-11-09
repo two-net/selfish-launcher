@@ -17,7 +17,11 @@ interface OsSettings {
     /** Whether the system animator duration scale is 0 (FR-ANIM-15). */
     val animationsOff: Flow<Boolean>
 
-    /** Emits on every minute, time-zone change and 12/24-hour change (FR-HOME-02, NFR-L10N-02). */
+    /**
+     * Emits the current time on collection, then on every minute, time
+     * change, time-zone change and 12/24-hour change (FR-HOME-02,
+     * NFR-L10N-02). The store collects it only while the launcher is shown.
+     */
     val clock: Flow<ClockInfo>
 
     /** The current network and Data Saver state, read when a download is considered (FR-WP-06). */
