@@ -3,7 +3,11 @@ package io.github.twonet.selfish.domain.state
 import io.github.twonet.selfish.domain.Verifies
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.AppId
+import io.github.twonet.selfish.domain.model.AppearanceMode
 import io.github.twonet.selfish.domain.model.Bounds
+import io.github.twonet.selfish.domain.model.GridItem
+import io.github.twonet.selfish.domain.model.Layout
+import io.github.twonet.selfish.domain.model.Settings
 import io.github.twonet.selfish.domain.ports.ScheduledRun
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,5 +42,24 @@ class LauncherReducerTest {
         val next = reduce(LauncherState(), Action.ScheduledRunDue(run))
 
         assertEquals(listOf<Effect>(Effect.FinishRun(run)), next.effects)
+    }
+
+    @Test
+    fun `restoring sets the saved layout and settings`() {
+        val layout = Layout(grid = listOf(GridItem.App(app("Maps").id)), home = listOf(app("Maps").id))
+        val settings = Settings(appearance = AppearanceMode.Dark)
+
+        val next = reduce(LauncherState(apps = listOf(app("Maps"))), Action.Restored(layout, settings))
+
+        assertEquals(LauncherState(apps = listOf(app("Maps")), layout = layout, settings = settings, restored = true), next.state)
+        assertEquals(emptyList(), next.effects)
+    }
+
+    @Test
+    fun `restoring without a saved layout leaves it for the first run`() {
+        val next = reduce(LauncherState(), Action.Restored(null, Settings()))
+
+        assertEquals(null, next.state.layout)
+        assertEquals(true, next.state.restored)
     }
 }

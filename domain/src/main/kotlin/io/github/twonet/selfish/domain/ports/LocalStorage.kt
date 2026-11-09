@@ -8,7 +8,10 @@ interface LocalStorage {
     /** The saved text of [doc], or `null` if it was never written (FR-GEN-07). */
     suspend fun read(doc: DocName): String?
 
-    /** Replaces [doc] atomically: a crash never leaves a half-written file (NFR-REL-03). */
+    /**
+     * Replaces [doc] atomically: a crash never leaves a half-written file
+     * where a good one was (NFR-REL-03).
+     */
     suspend fun write(doc: DocName, content: String)
 
     /** Stores one cached wallpaper image (FR-WP-07). */
@@ -20,8 +23,11 @@ interface LocalStorage {
 
     suspend fun imageIds(): Set<ImageId>
 
-    /** Deletes the whole wallpaper cache, for example when Daily is turned off (FR-WP-13). */
-    suspend fun clearImages()
+    /**
+     * Deletes the whole wallpaper cache, the images and the [DocName.WallpaperIndex],
+     * for example when Daily is turned off (FR-WP-13, SRS §8).
+     */
+    suspend fun clearWallpaperCache()
 }
 
 enum class DocName {

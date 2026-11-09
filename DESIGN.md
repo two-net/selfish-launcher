@@ -157,15 +157,16 @@ selfish-launcher/
 
 ```
 domain/src/main/kotlin/…/domain/
-  model/      AppId, AppEntry, GridItem (App | Folder), Layout, Settings,
-              WallpaperEntry, Appearance, Market, Rgb
+  model/      AppId, AppEntry, GridItem (App | Folder), FolderId, Layout,
+              Settings, WallpaperEntry, Appearance, Market, Rgb
   state/      LauncherState, Layer, Overlay, Action, Effect, LauncherStore, reduce()
   layout/     LayoutRules, CatalogReconciler, FirstRunLayout
   wallpaper/  WallpaperPolicy, MarketResolver, Crop
   theme/      ThemeResolver, HighlightColor, Contrast
   search/     TextNormalizer, SearchRanker
   remorse/    RemorseQueue
-  persist/    LayoutDoc, SettingsDoc, WallpaperIndexDoc, Migrations
+  persist/    VersionedDocument, LenientListSerializer, LayoutDoc, SettingsDoc,
+              WallpaperIndexDoc (#14), saveTo (the savers)
   ports/      AppCatalog, LocalStorage, SystemWallpaper, BingFeed,
               WallpaperScheduler, OsSettings, NotificationSource, UsageSource
 domain/src/testFixtures/kotlin/…/domain/
@@ -201,6 +202,9 @@ app/src/main/kotlin/…/
 - **Presentation renders state and sends actions.** It collects `state` with `collectAsStateWithLifecycle()` and keeps only transient UI state: drag progress while a gesture is in flight, scroll positions, cursor position and running animations. When a drag settles, it dispatches, for example, `Action.LayerSettled(Layer.AppGrid)`. When the Domain changes the layer (for example on a Home press), Presentation animates toward the new target.
 - **Ports push changes as `Flow`s**: catalog changes, the system dark theme, the animator scale, notifications and access revocations. The store collects them and turns them into actions.
 - **Persistence.** After each layout or settings change, the store writes the affected document through `LocalStorage`. Writes run on a background dispatcher, consecutive writes are merged, and every write is atomic (§5.3).
+  - **Restore first.** `start()` subscribes to the ports at once, because a scheduled run emitted before anyone listens is lost. It holds their events back until `Action.Restored(layout, settings)` has been dispatched, so every feature sees the saved state. `LauncherState.restored` is false until then, and Home shows only the wallpaper (FR-GEN-08).
+  - **No saved layout is a first run.** `LauncherState.layout` stays `null` when nothing usable was saved, until the first-run layout is built (§4.2).
+  - **Savers** compare each new value with the last one written. Nothing is written at start, and a change made before a saver starts is not lost. A document whose read *failed* (as opposed to one that was missing or corrupt) is not written again in that process, so a passing storage error can't replace the user's file with defaults.
 
 **Threading**
 
@@ -238,10 +242,12 @@ Overlays: Folder(id) · ContextMenu(target) · PulleyMenu(page) · Keyboard     
 
 ### 4.2 Layout rules
 
-Layout operations are pure functions over `Layout(grid: List<GridItem>, home: List<AppId>, schemaVersion)`, where `GridItem = App(AppId) | Folder(id, name, apps: List<AppId>)`.
+Layout operations are pure functions in `LayoutRules` over `Layout(grid: List<GridItem>, home: List<AppId>)`, where `GridItem = App(AppId) | Folder(id: FolderId, name, apps: List<AppId>)`. The schema version lives in the saved document, not in the model (§4.7).
 
 - **App identity.** `AppId` is (package, launch activity, user serial number). It is stable across reboots and app updates (SRS §8).
 - **Folder limits are types.** Home is a list of `AppId`, and a folder holds only `AppId`s. So a folder cannot be nested or placed on Home (FR-FOLD-08).
+- **Folder IDs.** `nextFolderId` returns one more than the largest ID in use.
+- **Saved layouts are normalized.** `normalize(layout)` restores the invariants that don't depend on the catalog: each app once (the first wins), no empty or one-app folders, unique folder IDs, and at most 9 distinct covers. It runs on every layout read from storage (NFR-REL-03).
 
 | Operation | Rule | Serves |
 |---|---|---|
@@ -326,16 +332,20 @@ With "Covers show: Recently used" (FR-HOME-10, C), Home shows `UsageSource.recen
 
 ### 4.7 Persistence and migration
 
-- There are three documents, each a `@Serializable` class with a `schemaVersion`:
-  - `layout.json`, included in backup;
-  - `settings.json`, included in backup;
-  - `wallpapers.json`, the cache index, which is not backed up (SRS §8).
+- There are three documents. Each is a `VersionedDocument` over a `@Serializable` class, and `VersionedDocument` stamps a `schemaVersion` key into the JSON:
+  - `layout.json` (`LayoutDoc`), included in backup;
+  - `settings.json` (`SettingsDoc`), included in backup;
+  - `wallpapers.json`, the cache index, which is not backed up (SRS §8). It arrives with #14.
 - **Reading.** Parse to a `JsonObject`, then run the pure migrations `vN → vN+1` up to the current version (AR-07). Then decode leniently:
   - unknown keys are ignored;
   - invalid enum values fall back to their default;
-  - invalid list items are dropped one at a time;
-  - missing fields take their default.
-- A file that can't be parsed at all, or whose version is newer than the app knows, falls back to defaults without crashing (NFR-REL-03). In every other case, valid data is kept.
+  - invalid list items are dropped one at a time (`LenientListSerializer`);
+  - missing fields take their default;
+  - if decoding still fails, the saved fields are laid over the default one at a time, and each field that doesn't decode keeps its default. Range checks in `init` blocks, such as App Grid columns, take part in this;
+  - finally, a document-specific repair runs (`LayoutRules.normalize` for the layout).
+- A file that can't be parsed at all, isn't an object, or whose version is newer than the app knows has nothing usable. Then `decodeOrNull` returns `null` and `decode` returns the defaults, without crashing (NFR-REL-03). In every other case, valid data is kept. For the layout, `null` means a first run.
+- **Saved names are part of the format.** `GridItem` subclasses and enum constants carry explicit `@SerialName`s. Adding a field with a default needs no migration. Renaming, removing or restructuring one needs a migration.
+- **Frozen samples.** `PersistenceTest` keeps one file per released version under `domain/src/test/resources/persist/`, with every field set to a non-default value. Each one must still decode, so a format change without a migration fails the build.
 
 ---
 
@@ -382,7 +392,9 @@ URL building, the allowlist and redirect decision, the counting stream and the J
 
 - **Backed up.** `layout.json` and `settings.json` live in `filesDir` and are included in Auto Backup and device-to-device transfer. `dataExtractionRules` (API 31+) and `fullBackupContent` (API 29–30) both list exactly these two files (SRS §8).
 - **Not backed up.** The wallpaper cache and its index live in `noBackupFilesDir/wallpapers/`. The platform never backs that folder up and, unlike `cacheDir`, never clears it. So the pinned and applied images survive low-storage conditions (NFR-REL-02).
-- **Atomic writes.** Every write goes through `AtomicFile`: write a temporary file, sync it, then rename. A crash never leaves a half-written file (NFR-REL-03).
+- **Atomic writes.** Every write goes through `AtomicFile`: write a temporary file, sync it, then rename. A crash never leaves a half-written file where a good one was (NFR-REL-03). At API 29 `AtomicFile` still uses its older backup-file scheme, so a read during a write would lose that write. `FileStorage` serializes reads and writes behind one lock, and a *first* write cut short can leave a partial file that reads as corrupt.
+- **Images** are stored as `noBackupFilesDir/wallpapers/images/<id>.jpg`. IDs are restricted to letters, digits, `_` and `-`, so an ID can never name another path. Turning Daily off deletes the whole `wallpapers/` folder (`clearWallpaperCache`).
+- **Checked by tests.** `BackupRulesTest` (JVM, in `:app`) compares both backup XMLs with `FileStorage.BACKED_UP_FILES`. `FileStorageTest` (on a device, in `:adapters`) checks locations, atomic replacement and cache clearing.
 - **Nothing exposed to other apps** (NFR-PRIV-06).
   - There is no `ContentProvider`.
   - The only exported components are `MainActivity` (required for the Home role), the notification listener (protected by `BIND_NOTIFICATION_LISTENER_SERVICE`) and the job service (protected by `BIND_JOB_SERVICE`).

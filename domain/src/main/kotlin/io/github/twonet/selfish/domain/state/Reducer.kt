@@ -13,6 +13,9 @@ data class Next(
  * state and an action to the next state and its effects (AR-02, DESIGN §3.3).
  */
 fun reduce(state: LauncherState, action: Action): Next = when (action) {
+    is Action.Restored ->
+        Next(state.copy(layout = action.layout, settings = action.settings, restored = true))
+
     is Action.CatalogChanged -> {
         val collator = Collator.getInstance()
         Next(state.copy(apps = action.apps.sortedWith(compareBy(collator) { it.label })))

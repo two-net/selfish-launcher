@@ -8,9 +8,13 @@ class FakeLocalStorage : LocalStorage {
     val docs = mutableMapOf<DocName, String>()
     val images = mutableMapOf<ImageId, ByteArray>()
 
+    /** Every document write, in order. */
+    val writes = mutableListOf<Pair<DocName, String>>()
+
     override suspend fun read(doc: DocName): String? = docs[doc]
 
     override suspend fun write(doc: DocName, content: String) {
+        writes += doc to content
         docs[doc] = content
     }
 
@@ -26,7 +30,8 @@ class FakeLocalStorage : LocalStorage {
 
     override suspend fun imageIds(): Set<ImageId> = images.keys.toSet()
 
-    override suspend fun clearImages() {
+    override suspend fun clearWallpaperCache() {
         images.clear()
+        docs -= DocName.WallpaperIndex
     }
 }

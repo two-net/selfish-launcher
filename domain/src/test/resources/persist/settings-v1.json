@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "appearance": "dark",
+  "dailyWallpaper": false,
+  "market": "de-DE",
+  "lockScreen": true,
+  "downloadOn": "wifi-only",
+  "showClock": false,
+  "coversShow": "recently-used",
+  "gridColumns": 5,
+  "swipeDownOpens": "notification-shade",
+  "notificationsInEvents": true,
+  "notificationDots": true,
+  "haptics": "off",
+  "animations": "reduced"
+}

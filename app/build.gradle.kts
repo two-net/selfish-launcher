@@ -69,6 +69,12 @@ dependencies {
     testImplementation(libs.kotlin.test)
 }
 
+// BackupRulesTest reads the backup rules straight from src/main/res/xml. Make
+// them test inputs, or an edit to them would leave the test UP-TO-DATE.
+tasks.withType<Test>().configureEach {
+    inputs.dir("src/main/res/xml").withPropertyName("backupRules").withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
 // checkDependencies (AR-08, TD-06, DESIGN §8.2): the shipped runtime classpath
 // must match the reviewed list in gradle/runtime-dependencies.txt, which
 // mirrors DESIGN §7.1. Adding a component means updating both in one PR.

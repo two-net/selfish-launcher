@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "grid": [
+    {
+      "type": "app",
+      "id": { "packageName": "com.example.maps", "activityName": "com.example.maps.MainActivity", "userSerial": 0 }
+    },
+    {
+      "type": "folder",
+      "id": 7,
+      "name": "Work",
+      "apps": [
+        { "packageName": "com.example.mail", "activityName": "com.example.mail.Inbox", "userSerial": 10 },
+        { "packageName": "com.example.chat", "activityName": "com.example.chat.Main", "userSerial": 0 }
+      ]
+    }
+  ],
+  "home": [
+    { "packageName": "com.example.mail", "activityName": "com.example.mail.Inbox", "userSerial": 10 }
+  ]
+}

@@ -10,8 +10,8 @@
         </intent>
     </queries>
 
-    <!-- Backup covers layout.json and settings.json only (DESIGN §5.3);
-         #3 starts writing them. The original icon of FR-GEN-01 comes with #5. -->
+    <!-- Backup covers layout.json and settings.json only (DESIGN §5.3,
+         checked by BackupRulesTest). The original icon of FR-GEN-01 comes with #5. -->
     <application
         android:name=".SelfishApp"
         android:allowBackup="true"

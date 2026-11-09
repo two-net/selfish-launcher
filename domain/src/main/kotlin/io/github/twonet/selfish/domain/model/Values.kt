@@ -1,10 +1,13 @@
 package io.github.twonet.selfish.domain.model
 
+import kotlinx.serialization.Serializable
+
 /** An opaque sRGB color, `0xRRGGBB`. */
 @JvmInline
 value class Rgb(val value: Int)
 
 /** A Bing market code such as `en-US` (FR-WP-03). */
+@Serializable
 @JvmInline
 value class Market(val code: String)
 

@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @Verifies("AR-07", "NFR-REL-03")
@@ -14,7 +15,21 @@ class VersionedDocumentTest {
 
     /** Version 2 of a sample document. Version 1 called `name` `title`. */
     @Serializable
-    data class Sample(val name: String = "default", val mode: Mode = Mode.System, val count: Int = 0)
+    data class Sample(val name: String = "default", val mode: Mode = Mode.System, val count: Int = 0) {
+        init {
+            require(count >= 0)
+        }
+    }
+
+    @Serializable
+    data class Item(val label: String, val size: Int = 1)
+
+    @Serializable
+    data class Bag(
+        @Serializable(with = LenientListSerializer::class)
+        val items: List<Item> = emptyList(),
+        val owner: String = "nobody",
+    )
 
     private val renameTitle: (JsonObject) -> JsonObject = { v1 ->
         JsonObject(v1.mapKeys { (key, _) -> if (key == "title") "name" else key })
@@ -67,5 +82,65 @@ class VersionedDocumentTest {
     @Test
     fun `an invalid enum value falls back to its default`() {
         assertEquals(Sample(name = "A", mode = Mode.System), doc.decode("""{"schemaVersion":2,"name":"A","mode":"Purple"}"""))
+    }
+
+    @Test
+    fun `nothing usable saved decodes to null`() {
+        for (text in listOf(null, "", "not json", "[1,2]", """{"schemaVersion":"two"}""", """{"schemaVersion":0}""", """{"schemaVersion":3}""")) {
+            assertNull(doc.decodeOrNull(text), "for $text")
+        }
+    }
+
+    @Test
+    fun `a field that does not decode keeps its default and the others are kept`() {
+        assertEquals(Sample(name = "A", count = 0), doc.decode("""{"schemaVersion":2,"name":"A","count":"many"}"""))
+        assertEquals(Sample(name = "A", mode = Mode.Dark), doc.decode("""{"schemaVersion":2,"name":"A","mode":"Dark","count":-1}"""))
+    }
+
+    @Test
+    fun `field-level fallback starts from the document default`() {
+        val seeded = VersionedDocument(Sample.serializer(), default = Sample(name = "seed", count = 7))
+
+        assertEquals(Sample(name = "seed", mode = Mode.Dark, count = 7), seeded.decode("""{"mode":"Dark","count":-1}"""))
+    }
+
+    @Test
+    fun `repair runs after decoding`() {
+        val trimmed = VersionedDocument(Sample.serializer(), Sample(), repair = { it.copy(name = it.name.trim()) })
+
+        assertEquals(Sample(name = "A"), trimmed.decode("""{"name":"  A  "}"""))
+    }
+
+    @Test
+    fun `a repair that throws counts as nothing usable`() {
+        val broken = VersionedDocument(Sample.serializer(), Sample(), repair = { error("bug") })
+
+        assertNull(broken.decodeOrNull("""{"name":"A"}"""))
+    }
+
+    @Test
+    fun `a lenient list drops only the elements it cannot read`() {
+        val bags = VersionedDocument(Bag.serializer(), Bag())
+
+        val bag = bags.decode("""{"items":[{"label":"a"},{"size":2},"junk",{"label":"b","size":"big"},{"label":"c","size":3}],"owner":"me"}""")
+
+        assertEquals(Bag(listOf(Item("a"), Item("c", 3)), owner = "me"), bag)
+    }
+
+    @Test
+    fun `a lenient list that is not a list falls back alone`() {
+        val bags = VersionedDocument(Bag.serializer(), Bag())
+
+        assertEquals(Bag(owner = "me"), bags.decode("""{"items":"none","owner":"me"}"""))
+    }
+
+    @Test
+    fun `a lenient list is written as a plain list`() {
+        val bags = VersionedDocument(Bag.serializer(), Bag())
+
+        assertEquals(
+            """{"schemaVersion":1,"items":[{"label":"a","size":1}],"owner":"me"}""",
+            bags.encode(Bag(listOf(Item("a")), owner = "me")),
+        )
     }
 }

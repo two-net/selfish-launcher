@@ -1,9 +1,12 @@
 package io.github.twonet.selfish.domain.model
 
+import kotlinx.serialization.Serializable
+
 /**
  * Identifies one launchable entry: package, launch activity and user profile
  * (SRS §8). Stable across reboots and app updates, so it is what layouts store.
  */
+@Serializable
 data class AppId(
     val packageName: String,
     val activityName: String,
