@@ -180,10 +180,12 @@ adapters/src/main/kotlin/…/adapters/
 
 app/src/main/kotlin/…/
   SelfishApp.kt   AppGraph.kt   MainActivity.kt
-  ui/tokens/      colors, glass, type, spacing, shapes, motion (AR-04, UI-08)
+  ui/tokens/      Colors (incl. glass), Type, Spacing, Sizes, Shapes, Motion,
+                  LauncherTheme (AR-04, UI-08)
   ui/motion/      LayerGestureController, springs, reduced motion
-  ui/components/  Glass, PageHeader, AppIcon, Cover, PressGlow, PulleyMenu,
-                  ContextMenu, RemorseBanner, GestureHint, ReorderableGrid
+  ui/components/  Pressable, LauncherText, Glass, PageHeader, AppIcon, Cover,
+                  PressGlow, PulleyMenu, ContextMenu, RemorseBanner, GestureHint,
+                  ReorderableGrid
   ui/home/  ui/grid/  ui/folder/  ui/search/  ui/events/  ui/topmenu/
   ui/settings/  ui/wallpaper/  ui/onboarding/
 ```
@@ -454,6 +456,7 @@ URL building, the allowlist and redirect decision, the counting stream and the J
   - The theme sets `windowShowWallpaper=true` and a transparent window background, so the system draws the wallpaper behind the launcher.
   - The window is edge-to-edge with transparent system bars.
   - Status-bar and navigation-bar icons switch between light and dark to suit the surface underneath them (FR-THM-08, FR-HOME-01).
+  - The theme's parent has no action bar (UI-03), and the theme sets `soundEffectsEnabled=false`, so no view plays the system click sound (UI-09). `ThemeRulesTest` checks the theme and that the manifest applies it to every activity.
 - **Insets.** Content is padded by `WindowInsets.safeDrawing`, which covers cutouts, rounded corners and system bars (UI-07, NFR-COMP-02). Gestures ignore touches that start inside `WindowInsets.systemGestures` (FR-GEST-04, C-5).
 - **Home press.** `onNewIntent` with `CATEGORY_HOME` dispatches `Action.HomePressed` (FR-GEN-03). When the launcher returns from another app, Home settles in from 96% scale and partial transparency over the Medium duration (FR-ANIM-03).
 - **Back.** One always-enabled `OnBackPressedCallback` dispatches `Action.Back`, which does nothing on bare Home (FR-GEN-04).
@@ -502,7 +505,11 @@ The release decision, direction lock and pull-depth mapping are pure functions (
 | `ContextMenu` | A full-width item inserted after the pressed item's row. `animateItem()` pushes later rows down. Dragging the lifted icon closes the menu and starts a move. | FR-GRID-06, FR-ANIM-08 |
 | `ReorderableGrid` | Long-press lifts the item to 110% with a shadow, and the other items reflow with `animateItem()`. The grid auto-scrolls near its edges. Dropping onto the center of an app creates a folder. This is owned code, because the rules are launcher-specific (§7). | FR-HOME-06, FR-GRID-05, FR-GRID-07, FR-GRID-08, FR-ANIM-05, FR-ANIM-06 |
 | `RemorseBanner` | Shows the action's label and a bar that shrinks toward the deadline held in state. Tapping it dispatches `CancelRemorse`, and the affected item animates back. | FR-GEST-06, FR-ANIM-12 |
-| `PageHeader` | Large, trailing-aligned, in the highlight color. | UI-02, FR-EVT-02 |
+| `Modifier.pressable` | The only way to handle taps and long-presses. It keeps every touch target at least 48 × 48 dp and uses `LocalIndication`, so `PressGlow` reaches every element. | UI-06, FR-ANIM-04 |
+| `LauncherText` | Text in one of the four roles (display, header, body, label) at primary or secondary emphasis. It takes no color, so body text can't be drawn in the highlight. | UI-04, FR-AMB-04 |
+| `Glass` | A translucent panel in the glass color and shape, for cards, menus and folder panels. | UI-01 |
+| `PageHeader` | Large (header style), full width, `TextAlign.End` so it mirrors in right-to-left languages, in the highlight color, and announced as a heading. | UI-02, FR-EVT-02 |
+| `AppIcon` | Every app icon at the one icon size. Icons that support a shape (adaptive icons) are clipped to the icon shape; without an icon it shows the label's initial on glass. Decorative to screen readers, because the item's label names the app. Loading icons arrives with #5 and #7. | UI-05 |
 | `PressGlow` | A Compose `Indication` that draws a highlight-color glow on the first frame of a press and fades it out over the Short duration. | FR-ANIM-04 |
 | Folder panel | A shared-bounds transition from the tile to the panel and back. | FR-FOLD-03, FR-ANIM-07 |
 | `GestureHint` | A glowing touch point that traces a gesture in the tutorial and in contextual hints. | FR-ANIM-13, FR-ONB-02 |
@@ -516,20 +523,36 @@ The release decision, direction lock and pull-depth mapping are pure functions (
 
 ### 6.5 Design tokens and ambience (UI-08, AR-04)
 
-`ui/tokens/` is the only place that defines colors, sizes, radii, durations, easings and springs. A review rule says no literal color, dp or duration appears anywhere else.
+`ui/tokens/` is the only place that defines colors, sizes, radii, durations, easings and springs. No literal color, dp, sp, radius, alpha or duration appears anywhere else.
 
-- **Colors per appearance.** Primary and secondary text, glass fill, scrims, dim and the default highlight. The highlight itself comes from state.
-- **Glass is contrast-tested** (NFR-A11Y-03). Glass and scrim alphas are chosen so that, in both appearances:
-  - primary text reaches 4.5:1 and large text and UI components reach 3:1;
-  - this holds against both worst-case wallpapers, pure white and pure black.
-  - `ContrastTokensTest` (a JVM test) checks this using the Domain's `Contrast`.
-- **Scrims adapt** (FR-HOME-01, FR-THM-05). Home's clock and cover labels sit on gradient scrims whose strength comes from the brightness of the wallpaper behind them. For launcher-set images, that brightness is computed alongside the highlight color. For other wallpapers, it comes from `WallpaperColors` hints, with the worst case as the fallback.
-- **Type.** The system sans-serif family (`FontFamily.Default`), in four sizes: display, header, body and label. Each has two emphasis levels. All sizes are in `sp` (UI-04, NFR-A11Y-04). No font is bundled (C-3, NFR-PERF-07).
-- **Layout.** A 4 dp spacing scale, a minimum touch target of 48 × 48 dp, one icon size and corner radii (UI-05, UI-06).
+- **Colors per appearance** (`Colors.kt`). The highlight itself comes from state; `highlightDefault` is used when there is none (FR-AMB-03).
+
+  | Token | Light | Dark | Use |
+  |---|---|---|---|
+  | `textPrimary` | `#111111` | `#F5F5F5` | Text and icons at primary emphasis |
+  | `textSecondary` | `#3A3A3A` | `#CCCCCC` | Text at secondary emphasis |
+  | `glass` | white at 68% | black at 68% | Panels, cards, menus |
+  | `scrim` | white at 68% | black at 68% | The strongest scrim behind text drawn straight on the wallpaper |
+  | `dim` | white at 68% | black at 68% | The App Grid's backdrop at full progress |
+  | `highlightDefault` | `#005A70` | `#6CCFF6` | Headers and states when the wallpaper gives no color |
+
+- **Glass is contrast-tested** (NFR-A11Y-03). Every backdrop alpha is below 1, so the wallpaper always shows through (UI-01), and as low as the contrast targets allow. Secondary text sets that floor. In both appearances, on glass, scrim and dim over both worst-case wallpapers (pure white and pure black):
+  - text at both emphasis levels reaches 4.5:1 (worst case: Light 8.4 and 5.1, Dark 7.2 and 4.9);
+  - the default highlight reaches 3:1 (worst case: Light 3.5, Dark 4.4). 3:1 is enough because the header and display styles are WCAG large text (at least 24 sp), and the highlight is never used for body text (FR-AMB-04).
+  - `DesignTokensTest` (a JVM test) checks all of this with the Domain's `Contrast`, which composites each backdrop over the wallpaper the way Android does.
+- **Scrims adapt** (FR-HOME-01, FR-THM-05). Home's clock and cover labels sit on gradient scrims whose strength comes from the brightness of the wallpaper behind them. For launcher-set images, that brightness is computed alongside the highlight color. For other wallpapers, it comes from `WallpaperColors` hints, with the worst case as the fallback. The `scrim` token is that worst case: an adaptive scrim is never stronger.
+- **Type** (`Type.kt`). The system sans-serif family (`FontFamily.Default`), in four roles: display 64 sp light (the clock), header 32 sp light, body 18 sp and label 14 sp. There are two emphasis levels, primary and secondary, drawn in `textPrimary` and `textSecondary`. All sizes are in `sp` (UI-04, NFR-A11Y-04). No font is bundled (C-3, NFR-PERF-07).
+- **Layout.** `Spacing` is a 4 dp scale: `Step` 4, then 4, 8, 12, 16 (`Gutter`), 24 and 32 dp. `Sizes` holds the one icon size (56 dp, UI-05) and the minimum touch target (48 dp, UI-06). `Radii` and `Shapes` hold the glass corner (12 dp) and the icon shape (16 dp).
 - **Motion.** The SRS §4.9 tokens: Short 150 ms, Medium 250 ms, Long 400 ms, Ambient 800 ms; decelerate and accelerate easings; a critically damped spring; rubber-band resistance.
-- **`LauncherTheme`** provides the tokens through composition locals and animates every color:
+- **`LauncherTheme`** provides the tokens and the current highlight through composition locals. #13 and #17 make it animate every color:
   - appearance changes crossfade over Long without reloading the screen (FR-ANIM-11, FR-THM-03);
   - highlight changes move over Ambient (FR-ANIM-10).
+
+**Enforcement.** `LayerRulesTest` scans `app/src/main` and fails on:
+- a literal color, `dp`, `sp`, percent radius, alpha or duration outside `ui/tokens/` (AR-04, UI-08);
+- `clickable`, `combinedClickable`, `selectable` or `toggleable` outside `Modifier.pressable` (UI-06);
+- `BasicText` outside `ui/components/`, or `FontFamily`, `FontWeight` or `TextStyle` outside `ui/tokens/` (UI-04);
+- any audio API (`SoundPool`, `MediaPlayer`, `AudioManager`, `ToneGenerator`, `playSoundEffect`, …), also in `:adapters` (UI-09).
 
 ### 6.6 Wallpaper display
 
@@ -750,7 +773,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 |---|---|---|
 | FR-THM-01, FR-THM-02, FR-THM-04, FR-THM-06 | U | `ThemeResolverTest`, `SettingsDefaultsTest`. |
 | FR-THM-03, FR-THM-07, FR-THM-08, FR-THM-09 | I | `AppearanceTest`: toggles the system theme with `cmd uimode night`; visits every surface; checks system-bar icon appearance; uses both switches (AC-01, AC-02). |
-| FR-THM-05 | U, R | `ContrastTokensTest`. Review over sample wallpapers. |
+| FR-THM-05 | U, R | `DesignTokensTest`. Review over sample wallpapers. |
 
 **Settings (SRS §4.13)**
 
@@ -772,9 +795,15 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 
 | Requirements | Level | Verified by |
 |---|---|---|
-| UI-01, UI-02, UI-03, UI-04, UI-05, UI-08, UI-09 | R | Visual review of each surface; tokens-only rule (§6.5); no sounds. |
-| UI-06 | I | `AccessibilityTest`: every clickable node is at least 48 × 48 dp. |
-| UI-07 | I | `HomeTest` on an emulator with a display cutout. |
+| UI-01 | U, R | `DesignTokensTest`: every backdrop is translucent. `ThemeRulesTest`: transparent window over the wallpaper. Visual review of each surface. |
+| UI-02 | U, R | `DesignTokensTest`: the header style is large text. Review: every page header is a `PageHeader`. |
+| UI-03 | U, B, R | `ThemeRulesTest`: no action bar. `checkDependencies`: no Material. Review: no toolbars, floating buttons or tab bars. |
+| UI-04 | U, R | `DesignTokensTest`: one family, four roles in `sp`. `LayerRulesTest`: text only through `LauncherText` and `PageHeader`. |
+| UI-05 | U, R | `DesignTokensTest`: the icon size is on the scale. Review: every app icon is an `AppIcon`. |
+| UI-06 | U, I | `DesignTokensTest`: 4 dp scale, 48 dp minimum. `LayerRulesTest`: taps only through `Modifier.pressable`. `AccessibilityTest`: every clickable node is at least 48 × 48 dp. |
+| UI-07 | I, R | `HomeTest` on an emulator with a display cutout. Review: content is padded by `WindowInsets.safeDrawing`. |
+| UI-08 | U, R | `LayerRulesTest`: no literal colors, sizes, radii, alphas or durations outside `ui/tokens/` (§6.5). |
+| UI-09 | U, R | `ThemeRulesTest`: sound effects off. `LayerRulesTest`: no audio APIs. Review: no sounds. |
 
 **Bing interface (SRS §5.3)**
 
@@ -822,7 +851,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 | Requirements | Level | Verified by |
 |---|---|---|
 | NFR-A11Y-01, NFR-A11Y-02 | I | `AccessibilityTest`: labels and custom actions (AC-10). |
-| NFR-A11Y-03 | U | `ContrastTokensTest`, `HighlightColorTest`. |
+| NFR-A11Y-03 | U | `ContrastTest`, `DesignTokensTest`, `HighlightColorTest`. |
 | NFR-A11Y-04 | I, R | `AccessibilityTest` at the largest font scale checks for text overflow. |
 | NFR-A11Y-05 | I | `NavigationTest` with reduced motion (AC-09). |
 | NFR-A11Y-06 | R | Every haptic has a visual counterpart. |

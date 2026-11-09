@@ -22,6 +22,11 @@ class LayerRulesTest {
         val code = lines.withIndex().filterNot { (_, line) ->
             line.trimStart().let { it.startsWith("//") || it.startsWith("*") || it.startsWith("/*") }
         }
+
+        /** Code lines that match any of [patterns], as `path:line: code`. */
+        fun matching(patterns: List<Regex>): List<String> = code
+            .filter { (_, line) -> patterns.any { it.containsMatchIn(line) } }
+            .map { (index, line) -> "$relativePath:${index + 1}: ${line.trim()}" }
     }
 
     private fun sources(root: File): List<Source> {
@@ -59,7 +64,7 @@ class LayerRulesTest {
     }
 
     @Test
-    @Verifies("AR-04")
+    @Verifies("AR-04", "UI-08")
     fun `colors, sizes and durations are defined only in the tokens`() {
         val offenders = sources(appRoot)
             .filterNot { it.relativePath.startsWith("ui/tokens/") }
@@ -70,6 +75,39 @@ class LayerRulesTest {
             }
 
         assertEquals(emptyList(), offenders, "Use ui/tokens instead of literal values")
+    }
+
+    @Test
+    @Verifies("UI-06")
+    fun `taps are handled only through pressable, which keeps targets at least 48 dp`() {
+        val offenders = sources(appRoot)
+            .filter { it.relativePath != "ui/components/Pressable.kt" }
+            .flatMap { source -> source.matching(CLICK_HANDLERS) }
+
+        assertEquals(emptyList(), offenders, "Use Modifier.pressable from ui/components")
+    }
+
+    @Test
+    @Verifies("UI-04")
+    fun `text is drawn only through the components, in the token type scale`() {
+        val outsideComponents = sources(appRoot)
+            .filterNot { it.relativePath.startsWith("ui/components/") }
+            .flatMap { source -> source.matching(listOf(BASIC_TEXT)) }
+        val outsideTokens = sources(appRoot)
+            .filterNot { it.relativePath.startsWith("ui/tokens/") }
+            .flatMap { source -> source.matching(listOf(TYPE_DEFINITIONS)) }
+
+        assertEquals(emptyList(), outsideComponents, "Use LauncherText or PageHeader")
+        assertEquals(emptyList(), outsideTokens, "Type styles are defined only in ui/tokens")
+    }
+
+    @Test
+    @Verifies("UI-09")
+    fun `the launcher makes no sounds`() {
+        val offenders = (sources(appRoot) + sources(adaptersRoot))
+            .flatMap { source -> source.matching(SOUND_APIS) }
+
+        assertEquals(emptyList(), offenders, "The launcher makes no sounds of its own")
     }
 
     @Test
@@ -107,6 +145,30 @@ class LayerRulesTest {
             Regex("""\b(tween|delay|snap)\(\s*(durationMillis\s*=\s*)?\d"""),
             Regex("""\b(durationMillis|delayMillis)\s*=\s*\d"""),
             Regex("""\b\d+\.(milliseconds|seconds)\b"""),
+            // Corner radii in percent; radii in dp are caught above.
+            Regex("""\bRoundedCornerShape\(\s*\d"""),
+            // Literal alphas such as `.copy(alpha = 0.5f)` or `.alpha(0.5f)`;
+            // computed ones such as `alpha = 1f - progress` are fine.
+            Regex("""\balpha\s*=\s*\d*\.?\d+f?\s*([,)};]|$)"""),
+            Regex("""\.alpha\(\s*\d*\.?\d+f?\s*\)"""),
+        )
+
+        /** Every tap goes through `Modifier.pressable` (UI-06). */
+        val CLICK_HANDLERS = listOf(
+            Regex("""\.(clickable|combinedClickable|selectable|toggleable|triStateToggleable)\s*[({]"""),
+        )
+
+        val BASIC_TEXT = Regex("""\bBasicText\s*\(""")
+
+        val TYPE_DEFINITIONS = Regex("""\b(FontFamily|FontWeight|TextStyle)\b""")
+
+        /** Platform audio APIs (UI-09), as imports or fully qualified names. */
+        val SOUND_APIS = listOf(
+            Regex(
+                """\b(SoundPool|MediaPlayer|AudioManager|AudioTrack|ToneGenerator|Ringtone|RingtoneManager|""" +
+                    """AsyncPlayer|JetPlayer|SoundEffectConstants|playSoundEffect)\b""",
+            ),
+            Regex("""^import\s+android\.media\.\*"""),
         )
 
         val OPTIONAL_PACKAGES = listOf("notifications", "usage")

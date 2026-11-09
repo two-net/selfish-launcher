@@ -5,6 +5,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
 
 /**
  * The one set of design tokens (AR-04, UI-08). Every view reads colors, sizes,
@@ -14,17 +15,23 @@ import androidx.compose.runtime.staticCompositionLocalOf
 class LauncherTokens(
     val colors: LauncherColors,
     val type: LauncherType,
+    /** The ambience's highlight color (SRS §4.11), for headers and states only (FR-AMB-04). */
+    val highlight: Color,
 )
 
-private val LocalLauncherTokens = staticCompositionLocalOf { LauncherTokens(LightColors, DefaultType) }
+private val LocalLauncherTokens = staticCompositionLocalOf {
+    LauncherTokens(LightColors, DefaultType, LightColors.highlightDefault)
+}
 
 /**
- * Provides the tokens for [dark] or light appearance. #17 resolves the
- * appearance in the Domain and passes it in from state.
+ * Provides the tokens for [dark] or light appearance and the current
+ * [highlight], which falls back to the appearance's default. #16 and #17
+ * resolve both in the Domain and pass them in from state.
  */
 @Composable
-fun LauncherTheme(dark: Boolean = false, content: @Composable () -> Unit) {
-    val tokens = LauncherTokens(colors = if (dark) DarkColors else LightColors, type = DefaultType)
+fun LauncherTheme(dark: Boolean = false, highlight: Color? = null, content: @Composable () -> Unit) {
+    val colors = if (dark) DarkColors else LightColors
+    val tokens = LauncherTokens(colors = colors, type = DefaultType, highlight = highlight ?: colors.highlightDefault)
     CompositionLocalProvider(LocalLauncherTokens provides tokens, content = content)
 }
 
@@ -36,4 +43,8 @@ object LauncherTheme {
     val type: LauncherType
         @Composable @ReadOnlyComposable
         get() = LocalLauncherTokens.current.type
+
+    val highlight: Color
+        @Composable @ReadOnlyComposable
+        get() = LocalLauncherTokens.current.highlight
 }

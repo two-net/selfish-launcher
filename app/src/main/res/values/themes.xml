@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- The system draws the wallpaper behind a transparent window (DESIGN §6.1).
-         A platform theme: no AppCompat or Material (TD-02). -->
+    <!-- The system draws the wallpaper behind a transparent window (DESIGN §6.1,
+         UI-01). A platform theme without an action bar: no AppCompat or
+         Material (TD-02, UI-03). Views never play click sounds (UI-09).
+         ThemeRulesTest checks these. -->
     <style name="Theme.Selfish" parent="@android:style/Theme.DeviceDefault.NoActionBar">
         <item name="android:windowShowWallpaper">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowIsTranslucent">false</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:soundEffectsEnabled">false</item>
     </style>
 </resources>
