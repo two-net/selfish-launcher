@@ -29,6 +29,20 @@ object Sizes {
     /** How far the App Grid scrolls in a second with a dragged item at its very edge (FR-GRID-07). */
     val AutoScrollSpeed: Dp = 960.dp
 
+    /**
+     * How far a pulley menu is pulled before its first item is chosen, and
+     * then from one item to the next (FR-GEST-05). Each item's row is this
+     * tall, so the chosen item is the one that has just come fully into view.
+     */
+    val PulleyItem: Dp = 48.dp
+
+    /** The bar at the top of a page that shows it has a pulley menu (FR-GEST-05): its width, then its thickness. */
+    val PulleyIndicatorWidth: Dp = 32.dp
+    val PulleyIndicatorThickness: Dp = 4.dp
+
+    /** The thickness of the remorse banner's countdown bar (FR-GEST-06). */
+    val RemorseBar: Dp = 4.dp
+
     /** How strongly the wallpaper is blurred behind the open App Grid, where supported (FR-GRID-01). */
     val BlurRadius: Dp = 32.dp
 }

@@ -1,6 +1,7 @@
 package io.github.twonet.selfish.ui.motion
 
 import io.github.twonet.selfish.ui.tokens.Motion
+import kotlin.math.exp
 import kotlin.math.abs
 
 /** The axis a drag is locked to once it has clearly moved (FR-GEST-04). */
@@ -38,4 +39,28 @@ object GestureMath {
         velocity <= -minFling -> false
         else -> covered >= Motion.COMPLETE_FRACTION
     }
+
+    /**
+     * How far a pulley menu moves for a finger that has moved [drag] pixels
+     * (SRS §4.9 "Rubber band"): one to one at first, then with resistance
+     * that grows with distance, approaching [limit] without reaching it.
+     */
+    fun rubberBand(drag: Float, limit: Float): Float = if (drag <= 0f || limit <= 0f) 0f else limit * (1f - exp(-drag / limit))
+
+    /**
+     * The pulley menu item that a pull of [pull] pixels reaches (FR-GEST-05):
+     * none before [item], then the next of [count] items every [item]
+     * further, staying on the last one beyond it. `null` cancels.
+     */
+    fun pulleyIndex(pull: Float, item: Float, count: Int): Int? = when {
+        count <= 0 || item <= 0f || pull < item -> null
+        else -> ((pull / item).toInt() - 1).coerceAtMost(count - 1)
+    }
+
+    /**
+     * How far a pulley menu of [count] items can be pulled at most, its
+     * rubber band's limit: one item beyond the last, so every item is
+     * within comfortable reach.
+     */
+    fun pulleyLimit(item: Float, count: Int): Float = item * (count + 2)
 }

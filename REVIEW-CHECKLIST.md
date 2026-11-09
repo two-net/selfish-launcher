@@ -32,6 +32,14 @@ issues add their items here. Every release PR signs off the whole list.
 - [ ] [FR-GRID-07, FR-GRID-08] Holding a dragged app near the top or bottom scrolls the grid at a controllable speed; passing over apps doesn't push them away, resting beside one does, and dropping onto one makes a folder. A screen recording is checked against the Medium duration.
 - [ ] [AC-07, FR-GRID-09, NFR-REL-05] With the grid open and scrolled, `adb install` of an app adds it at the end without moving what is on screen, and `adb uninstall` removes it without leaving a gap or closing the grid.
 
+## Folders (SRS §4.4)
+
+- [ ] [FR-FOLD-03, FR-ANIM-07] Tapping a folder grows its panel out of its icon over the dimmed grid, and Back, Home and a tap outside shrink it back into the icon. A screen recording is checked against the Medium duration.
+- [ ] [FR-FOLD-05, AC-08] An app dragged past the edge of an open folder keeps following the finger as the panel fades, the grid makes room for it, and it can be dropped in the grid, onto an app or onto another folder. A folder left with one app turns back into that app in its place. Checked with a screen recording.
+- [ ] [FR-FOLD-07, FR-GEST-05, FR-GEST-08] Pulling an open folder down slowly highlights "Rename", then "Remove folder", with a tick for each, and no tick with the system's touch feedback turned off. Releasing before the first item does nothing.
+- [ ] [FR-FOLD-07, FR-GEST-06, FR-ANIM-12] "Remove folder" shows the banner over the grid and fades the folder. Tapping the banner fades it back. Pressing Home and waiting 5 s still returns its apps to the grid.
+- [ ] [FR-FOLD-04] Renaming with the on-screen keyboard: Done keeps the new name; Back hides the keyboard first, and the next Back closes the folder and keeps what was typed.
+
 ## User interface (SRS §5.1)
 
 - [ ] [UI-01] Every surface floats over the wallpaper on the `glass`, `scrim` or `dim` tokens; no surface has an opaque full-screen background. Checked in both appearances over a bright and a dark wallpaper.

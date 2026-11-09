@@ -31,6 +31,12 @@ class LauncherColors(
     val highlightDefault: Color,
 )
 
+/**
+ * How opaque a folder's tile is while its removal waits for the remorse
+ * timer, so it shows what is about to go (FR-FOLD-07, FR-ANIM-12).
+ */
+const val PENDING_ALPHA = 0.4f
+
 /** Light: dark text on light glass. */
 val LightColors = LauncherColors(
     textPrimary = Color(0xFF111111),

@@ -10,6 +10,7 @@ import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.AppId
 import io.github.twonet.selfish.domain.model.AppearanceMode
 import io.github.twonet.selfish.domain.model.Bounds
+import io.github.twonet.selfish.domain.model.FolderId
 import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.model.Settings
@@ -25,6 +26,7 @@ import io.github.twonet.selfish.domain.ports.NotificationSource
 import io.github.twonet.selfish.domain.ports.Ports
 import io.github.twonet.selfish.domain.ports.ScheduledRun
 import io.github.twonet.selfish.domain.ports.UsageSource
+import io.github.twonet.selfish.domain.remorse.REMORSE_DELAY
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
@@ -144,6 +146,29 @@ class LauncherStoreTest {
         store.dispatch(Action.Launch(maps.id, null))
         runCurrent()
         assertEquals(2, catalog.launched.size)
+    }
+
+    @Test
+    @Verifies("FR-GEST-06", "FR-FOLD-07")
+    fun `a folder's removal runs when its timer runs out, even after the launcher is hidden, and is saved`() = runTest {
+        catalog.installed.value = listOf(maps, clock)
+        val folder = GridItem.Folder(FolderId(1), "Tools", listOf(maps.id, clock.id))
+        save(Layout(grid = listOf(folder)), savedSettings)
+        val store = startedStore()
+
+        store.dispatch(Action.RemoveFolder(folder.id))
+        store.dispatch(Action.HomeHidden)
+        advanceTimeBy(REMORSE_DELAY - 1.milliseconds)
+        runCurrent()
+        assertEquals(listOf<GridItem>(folder), store.state.value.layout!!.grid, "Still waiting")
+
+        advanceTimeBy(1.milliseconds)
+        runCurrent()
+
+        val returned = Layout(grid = listOf(GridItem.App(maps.id), GridItem.App(clock.id)))
+        assertEquals(returned, store.state.value.layout)
+        assertNull(store.state.value.remorse)
+        assertEquals(returned, LayoutDoc.decodeOrNull(storage.docs[DocName.Layout]))
     }
 
     @Test

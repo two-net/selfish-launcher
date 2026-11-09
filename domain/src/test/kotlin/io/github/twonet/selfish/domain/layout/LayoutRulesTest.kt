@@ -214,10 +214,101 @@ class LayoutRulesTest {
         val layout = Layout(grid = listOf(item("a"), folder(1, "b", "c"), item("d")))
 
         assertEquals(layout, LayoutRules.dropOnto(layout, app("a"), app("a")))
-        assertEquals(layout, LayoutRules.dropOnto(layout, app("a"), app("b")), "Into a folder is #8's")
-        assertEquals(layout, LayoutRules.dropOnto(layout, app("b"), app("d")), "Out of a folder is #8's")
+        assertEquals(layout, LayoutRules.dropOnto(layout, app("a"), app("b")), "Into a folder is addToFolder")
+        assertEquals(layout, LayoutRules.dropOnto(layout, app("b"), app("d")), "Out of a folder is removeFromFolder")
         assertEquals(layout, LayoutRules.dropOnto(layout, app("z"), app("a")))
         assertEquals(layout, LayoutRules.dropOnto(layout, app("a"), app("z")))
+    }
+
+    // Folders (FR-FOLD-04 to FR-FOLD-08, AC-08)
+
+    @Test
+    @Verifies("FR-FOLD-05", "FR-FOLD-08")
+    fun `an app dropped onto a folder joins it last and leaves no gap`() {
+        val layout = Layout(grid = listOf(item("a"), folder(1, "b", "c"), item("d")), home = listOf(app("a")))
+
+        val added = LayoutRules.addToFolder(layout, app("d"), FolderId(1))
+        assertEquals(listOf(item("a"), folder(1, "b", "c", "d")), added.grid)
+        assertEquals(layout.home, added.home)
+        assertGridInvariants(added)
+
+        val first = LayoutRules.addToFolder(layout, app("a"), FolderId(1))
+        assertEquals(listOf(folder(1, "b", "c", "a"), item("d")), first.grid)
+        assertGridInvariants(first)
+    }
+
+    @Test
+    @Verifies("FR-FOLD-05", "FR-FOLD-08")
+    fun `only a loose app goes into a folder that exists`() {
+        val layout = Layout(grid = listOf(item("a"), folder(1, "b", "c"), folder(2, "d", "e")))
+
+        assertEquals(layout, LayoutRules.addToFolder(layout, app("d"), FolderId(1)), "Already in another folder")
+        assertEquals(layout, LayoutRules.addToFolder(layout, app("b"), FolderId(1)), "Already in this one")
+        assertEquals(layout, LayoutRules.addToFolder(layout, app("a"), FolderId(9)), "No such folder")
+        assertEquals(layout, LayoutRules.addToFolder(layout, app("z"), FolderId(1)), "Not in the grid")
+    }
+
+    @Test
+    @Verifies("FR-FOLD-05")
+    fun `an app taken out of a folder goes where it is dropped`() {
+        val layout = Layout(grid = listOf(item("a"), folder(1, "b", "c", "d"), item("e")))
+
+        val out = LayoutRules.removeFromFolder(layout, app("c"), 3)
+        assertEquals(listOf(item("a"), folder(1, "b", "d"), item("e"), item("c")), out.grid)
+        assertGridInvariants(out)
+
+        assertEquals(listOf(item("b"), item("a"), folder(1, "c", "d"), item("e")), LayoutRules.removeFromFolder(layout, app("b"), -4).grid)
+        assertEquals(listOf(item("a"), folder(1, "b", "c"), item("e"), item("d")), LayoutRules.removeFromFolder(layout, app("d"), 99).grid)
+        assertEquals(layout, LayoutRules.removeFromFolder(layout, app("a"), 0), "Not in a folder")
+        assertEquals(layout, LayoutRules.removeFromFolder(layout, app("z"), 0), "Not in the grid")
+    }
+
+    @Test
+    @Verifies("AC-08", "FR-FOLD-01", "FR-FOLD-06")
+    fun `taking one app out of a two-app folder dissolves it into the other, in its place`() {
+        // A onto B makes a folder of both; dragging A back out leaves B where the folder was.
+        val made = LayoutRules.dropOnto(Layout(grid = listOf(item("x"), item("a"), item("b"), item("y"))), app("a"), app("b"))
+        assertEquals(listOf(item("x"), folder(1, "b", "a").copy(name = GridItem.Folder.DEFAULT_NAME), item("y")), made.grid)
+
+        val out = LayoutRules.removeFromFolder(made, app("a"), 3)
+
+        assertEquals(listOf(item("x"), item("b"), item("y"), item("a")), out.grid)
+        assertGridInvariants(out)
+    }
+
+    @Test
+    @Verifies("FR-FOLD-05")
+    fun `an app moves within its folder and the others keep their order`() {
+        val layout = Layout(grid = listOf(item("a"), folder(1, "b", "c", "d")))
+
+        assertEquals(listOf(item("a"), folder(1, "d", "b", "c")), LayoutRules.moveInFolder(layout, app("d"), 0).grid)
+        assertEquals(listOf(item("a"), folder(1, "c", "d", "b")), LayoutRules.moveInFolder(layout, app("b"), 99).grid)
+        assertEquals(layout, LayoutRules.moveInFolder(layout, app("c"), 1))
+        assertEquals(layout, LayoutRules.moveInFolder(layout, app("a"), 0), "Not in a folder")
+    }
+
+    @Test
+    @Verifies("FR-FOLD-04")
+    fun `renaming trims the name, and a blank name keeps the old one`() {
+        val layout = Layout(grid = listOf(item("a"), folder(1, "b", "c")))
+
+        assertEquals("Games", LayoutRules.findFolder(LayoutRules.renameFolder(layout, FolderId(1), "  Games "), FolderId(1))!!.name)
+        assertEquals(layout, LayoutRules.renameFolder(layout, FolderId(1), "   "))
+        assertEquals(layout, LayoutRules.renameFolder(layout, FolderId(1), "F1"))
+        assertEquals(layout, LayoutRules.renameFolder(layout, FolderId(9), "Games"))
+    }
+
+    @Test
+    @Verifies("FR-FOLD-07")
+    fun `removing a folder puts its apps back in its place, in order`() {
+        val layout = Layout(grid = listOf(item("a"), folder(1, "b", "c", "d"), item("e")), home = listOf(app("c")))
+
+        val removed = LayoutRules.removeFolder(layout, FolderId(1))
+
+        assertEquals(listOf("a", "b", "c", "d", "e").map(::item), removed.grid)
+        assertEquals(layout.home, removed.home)
+        assertGridInvariants(removed)
+        assertEquals(layout, LayoutRules.removeFolder(layout, FolderId(9)))
     }
 
     private fun entry(name: String) = AppEntry(app(name), name)

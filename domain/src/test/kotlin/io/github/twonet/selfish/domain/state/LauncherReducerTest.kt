@@ -12,6 +12,9 @@ import io.github.twonet.selfish.domain.model.Settings
 import io.github.twonet.selfish.domain.ports.ClockInfo
 import io.github.twonet.selfish.domain.ports.DefaultApps
 import io.github.twonet.selfish.domain.ports.ScheduledRun
+import io.github.twonet.selfish.domain.remorse.Destructive
+import io.github.twonet.selfish.domain.remorse.PendingRemorse
+import io.github.twonet.selfish.domain.remorse.REMORSE_DELAY
 import java.time.Instant
 import java.time.ZoneOffset
 import kotlin.test.Test
@@ -382,9 +385,14 @@ class LauncherReducerTest {
     @Test
     @Verifies("FR-GEN-06")
     fun `uninstalling the app whose menu is open closes the menu`() {
-        val open = homeState.copy(overlays = listOf(Overlay.Folder(FolderId(1)), coverMenu))
+        val notes = app("Notes")
+        val open = homeState.copy(
+            apps = listOf(clock, maps, notes),
+            layout = Layout(grid = listOf(GridItem.Folder(FolderId(1), apps = listOf(clock.id, notes.id)), GridItem.App(maps.id)), home = listOf(maps.id)),
+            overlays = listOf(Overlay.Folder(FolderId(1)), coverMenu),
+        )
 
-        val next = reduce(open, Action.CatalogChanged(listOf(clock))).state
+        val next = reduce(open, Action.CatalogChanged(listOf(clock, notes))).state
 
         assertEquals(listOf<Overlay>(Overlay.Folder(FolderId(1))), next.overlays)
         assertEquals(emptyList(), next.layout!!.home)
@@ -465,6 +473,140 @@ class LauncherReducerTest {
 
         assertEquals(listOf(GridCell.App(maps), GridCell.Folder(folder, listOf(clock))), state.gridCells)
         assertEquals(emptyList(), LauncherState().gridCells)
+    }
+
+    // Folders (FR-FOLD-03 to FR-FOLD-07, FR-GEST-06)
+
+    private val notes = app("Notes")
+    private val tools = GridItem.Folder(FolderId(1), "Tools", listOf(clock.id, notes.id))
+    private val folderState = LauncherState(
+        apps = listOf(clock, maps, notes),
+        layout = Layout(grid = listOf(tools, GridItem.App(maps.id))),
+        restored = true,
+        layer = Layer.AppGrid,
+    )
+    private val openTools = Overlay.Folder(tools.id)
+    private val menuInTools = Overlay.ContextMenu(MenuTarget.App(notes.id))
+
+    @Test
+    @Verifies("FR-FOLD-03")
+    fun `a tap opens a folder over the App Grid, closing any menu`() {
+        val opened = reduce(folderState.copy(overlays = listOf(gridMenu)), Action.OpenFolder(tools.id)).state
+
+        assertEquals(listOf<Overlay>(openTools), opened.overlays)
+        assertEquals(GridCell.Folder(tools, listOf(clock, notes)), opened.openFolder)
+        assertSame(opened, reduce(opened, Action.OpenFolder(tools.id)).state, "Already open")
+
+        val onHome = folderState.copy(layer = Layer.Home)
+        assertSame(onHome, reduce(onHome, Action.OpenFolder(tools.id)).state, "Folders open only in the App Grid")
+        assertSame(folderState, reduce(folderState, Action.OpenFolder(FolderId(9))).state, "No such folder")
+    }
+
+    @Test
+    @Verifies("FR-FOLD-03", "FR-GEN-03", "FR-GEN-04")
+    fun `back closes a menu in the folder, then the folder, and home or a tap outside closes both`() {
+        val open = folderState.copy(overlays = listOf(openTools, menuInTools))
+
+        val back = reduce(open, Action.Back).state
+        assertEquals(listOf<Overlay>(openTools), back.overlays)
+        assertEquals(folderState, reduce(back, Action.Back).state)
+        assertEquals(folderState.copy(layer = Layer.Home), reduce(open, Action.HomePressed).state)
+        assertEquals(folderState, reduce(open, Action.CloseFolder).state)
+        assertSame(folderState, reduce(folderState, Action.CloseFolder).state)
+    }
+
+    @Test
+    @Verifies("FR-FOLD-05", "FR-FOLD-06", "AC-08")
+    fun `taking an app out of a two-app folder closes it and leaves the other app in its place`() {
+        val open = folderState.copy(overlays = listOf(openTools))
+
+        val next = reduce(open, Action.TakeOutOfFolder(notes.id, 2)).state
+
+        assertEquals(listOf(GridItem.App(clock.id), GridItem.App(maps.id), GridItem.App(notes.id)), next.layout!!.grid)
+        assertEquals(emptyList(), next.overlays)
+        assertEquals(null, next.openFolder)
+    }
+
+    @Test
+    @Verifies("FR-FOLD-06", "FR-GEN-06")
+    fun `a folder dissolved by an uninstall closes`() {
+        val open = folderState.copy(overlays = listOf(openTools, menuInTools))
+
+        val next = reduce(open, Action.CatalogChanged(listOf(clock, maps))).state
+
+        assertEquals(listOf(GridItem.App(clock.id), GridItem.App(maps.id)), next.layout!!.grid)
+        assertEquals(emptyList(), next.overlays)
+    }
+
+    @Test
+    @Verifies("FR-FOLD-04", "FR-FOLD-05")
+    fun `apps are added to and moved within a folder, and folders are renamed`() {
+        val added = reduce(folderState.copy(overlays = listOf(gridMenu)), Action.AddToFolder(maps.id, tools.id)).state
+        assertEquals(listOf<GridItem>(tools.copy(apps = listOf(clock.id, notes.id, maps.id))), added.layout!!.grid)
+        assertEquals(emptyList(), added.overlays, "Dragging closed the menu")
+
+        val open = added.copy(overlays = listOf(openTools, menuInTools))
+        val moved = reduce(open, Action.MoveInFolder(maps.id, 0)).state
+        assertEquals(listOf(maps.id, clock.id, notes.id), (moved.layout!!.grid.single() as GridItem.Folder).apps)
+        assertEquals(listOf<Overlay>(openTools), moved.overlays, "The folder stays open")
+
+        val renamed = reduce(moved, Action.RenameFolder(tools.id, " Games ")).state
+        assertEquals("Games", (renamed.layout!!.grid.single() as GridItem.Folder).name)
+    }
+
+    @Test
+    @Verifies("FR-FOLD-07", "FR-GEST-06")
+    fun `removing a folder closes it and waits five seconds before its apps return`() {
+        val open = folderState.copy(overlays = listOf(openTools))
+
+        val next = reduce(open, Action.RemoveFolder(tools.id))
+
+        assertEquals(folderState.copy(remorse = PendingRemorse(1, Destructive.RemoveFolder(tools.id)), remorses = 1), next.state)
+        assertEquals(tools.id, next.state.pendingRemoval)
+        assertEquals(listOf<Effect>(Effect.DispatchAfter(REMORSE_DELAY, Action.RemorseDue(1))), next.effects)
+
+        val due = reduce(next.state, Action.RemorseDue(1)).state
+        assertEquals(listOf(clock, notes, maps).map { GridItem.App(it.id) }, due.layout!!.grid)
+        assertEquals(null, due.remorse)
+    }
+
+    @Test
+    @Verifies("FR-FOLD-07", "FR-GEST-06")
+    fun `a cancelled removal keeps the folder, and its timer runs nothing`() {
+        val waiting = reduce(folderState, Action.RemoveFolder(tools.id)).state
+
+        val cancelled = reduce(waiting, Action.CancelRemorse).state
+
+        assertEquals(folderState.copy(remorses = 1), cancelled)
+        assertSame(cancelled, reduce(cancelled, Action.RemorseDue(1)).state)
+        assertSame(cancelled, reduce(cancelled, Action.CancelRemorse).state)
+    }
+
+    @Test
+    @Verifies("FR-FOLD-07", "FR-GEST-06")
+    fun `a second removal runs the first at once, and the first timer is then stale`() {
+        val games = GridItem.Folder(FolderId(2), "Games", listOf(maps.id, app("Chess").id))
+        val state = folderState.copy(layout = Layout(grid = listOf(tools, games)))
+        val first = reduce(state, Action.RemoveFolder(tools.id)).state
+
+        val second = reduce(first, Action.RemoveFolder(games.id))
+
+        assertEquals(listOf(GridItem.App(clock.id), GridItem.App(notes.id), games), second.state.layout!!.grid)
+        assertEquals(PendingRemorse(2, Destructive.RemoveFolder(games.id)), second.state.remorse)
+        assertEquals(listOf<Effect>(Effect.DispatchAfter(REMORSE_DELAY, Action.RemorseDue(2))), second.effects)
+        assertSame(second.state, reduce(second.state, Action.RemorseDue(1)).state)
+    }
+
+    @Test
+    @Verifies("FR-FOLD-07")
+    fun `a folder waiting for removal can't be opened, added to or removed again`() {
+        val waiting = reduce(folderState, Action.RemoveFolder(tools.id)).state
+
+        assertSame(waiting, reduce(waiting, Action.OpenFolder(tools.id)).state)
+        assertSame(waiting, reduce(waiting, Action.AddToFolder(maps.id, tools.id)).state)
+        val again = reduce(waiting, Action.RemoveFolder(tools.id))
+        assertSame(waiting, again.state)
+        assertEquals(emptyList(), again.effects)
     }
 
     @Test
