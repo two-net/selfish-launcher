@@ -10,12 +10,13 @@ import io.github.twonet.selfish.domain.ports.WallpaperScreens
 
 /**
  * A system wallpaper that only knows the fake images of [image]: their
- * bytes say their size, and any other bytes are "not an image".
+ * bytes say their size and color, and any other bytes are "not an image".
  */
 class FakeSystemWallpaper : SystemWallpaper {
     var current: WallpaperId? = null
     var lockCurrent: WallpaperId? = null
-    var colors: Rgb? = null
+    /** What [systemColors] reports, most prominent first. */
+    var colors: List<Rgb> = emptyList()
     var parallaxOffset: Float = 0f
 
     /** What [screenSize] reports. */
@@ -31,14 +32,15 @@ class FakeSystemWallpaper : SystemWallpaper {
     private var nextId = 1
 
     override suspend fun inspect(bytes: ByteArray): ImageInfo? {
-        val (_, size) = parse(bytes) ?: return null
-        return ImageInfo(size.width, size.height, 1, 1, intArrayOf(0))
+        val image = parse(bytes) ?: return null
+        val pixel = image.color?.value ?: 0
+        return ImageInfo(image.size.width, image.size.height, SAMPLE_SIDE, SAMPLE_SIDE, IntArray(SAMPLE_SIDE * SAMPLE_SIDE) { pixel })
     }
 
     override suspend fun apply(bytes: ByteArray, crop: Bounds, screens: WallpaperScreens): WallpaperId {
         check(!failApply) { "The system refused the wallpaper" }
-        val (label, _) = requireNotNull(parse(bytes)) { "Not an image" }
-        applied += Applied(label, crop, screens)
+        val image = requireNotNull(parse(bytes)) { "Not an image" }
+        applied += Applied(image.label, crop, screens)
         val id = WallpaperId(nextId++)
         if (screens.home) current = id
         if (screens.lock) lockCurrent = id
@@ -47,7 +49,7 @@ class FakeSystemWallpaper : SystemWallpaper {
 
     override suspend fun currentId(): WallpaperId? = current
 
-    override suspend fun systemColors(): Rgb? = colors
+    override suspend fun systemColors(): List<Rgb> = colors
 
     override fun screenSize(): PixelSize = screen
 
@@ -58,22 +60,29 @@ class FakeSystemWallpaper : SystemWallpaper {
     companion object {
         private const val MAGIC = "FAKEIMG"
 
+        /** The samples [inspect] returns are this many pixels across. */
+        private const val SAMPLE_SIDE = 4
+
         /**
          * The bytes of a fake image named [label] of [width] × [height]
-         * pixels, padded to [bytes] if that is longer.
+         * pixels, all of [color] (black without one), padded to [bytes] if
+         * that is longer.
          */
-        fun image(label: String, width: Int = 1080, height: Int = 1920, bytes: Int = 0): ByteArray {
-            val header = "$MAGIC:$label:${width}x$height:".encodeToByteArray()
+        fun image(label: String, width: Int = 1080, height: Int = 1920, bytes: Int = 0, color: Rgb? = null): ByteArray {
+            val header = "$MAGIC:$label:${width}x$height:${color?.value?.toString(16).orEmpty()}:".encodeToByteArray()
             return if (header.size >= bytes) header else header + ByteArray(bytes - header.size)
         }
 
-        private fun parse(bytes: ByteArray): Pair<String, PixelSize>? {
+        private class Parsed(val label: String, val size: PixelSize, val color: Rgb?)
+
+        private fun parse(bytes: ByteArray): Parsed? {
             val text = bytes.decodeToString().substringBefore('\u0000')
             val parts = text.split(':')
             if (parts.size < 3 || parts[0] != MAGIC) return null
             val dims = parts[2].split('x').mapNotNull { it.toIntOrNull() }
             if (dims.size != 2 || dims.any { it <= 0 }) return null
-            return parts[1] to PixelSize(dims[0], dims[1])
+            val color = parts.getOrNull(3)?.toIntOrNull(16)?.let(::Rgb)
+            return Parsed(parts[1], PixelSize(dims[0], dims[1]), color)
         }
     }
 }

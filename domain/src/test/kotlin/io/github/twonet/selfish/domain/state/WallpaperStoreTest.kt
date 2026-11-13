@@ -10,6 +10,7 @@ import io.github.twonet.selfish.domain.fakes.fakePorts
 import io.github.twonet.selfish.domain.model.DownloadOn
 import io.github.twonet.selfish.domain.model.Market
 import io.github.twonet.selfish.domain.model.PixelSize
+import io.github.twonet.selfish.domain.model.Rgb
 import io.github.twonet.selfish.domain.model.Settings
 import io.github.twonet.selfish.domain.persist.SettingsDoc
 import io.github.twonet.selfish.domain.persist.WallpaperIndexDoc
@@ -20,7 +21,9 @@ import io.github.twonet.selfish.domain.ports.ImageId
 import io.github.twonet.selfish.domain.ports.ImageVariant
 import io.github.twonet.selfish.domain.ports.LocalStorage
 import io.github.twonet.selfish.domain.ports.Ports
+import io.github.twonet.selfish.domain.ports.WallpaperId
 import io.github.twonet.selfish.domain.ports.WallpaperScreens
+import io.github.twonet.selfish.domain.theme.Highlight
 import io.github.twonet.selfish.domain.wallpaper.Crop
 import io.github.twonet.selfish.domain.wallpaper.WallpaperPolicy
 import kotlinx.coroutines.CompletableDeferred
@@ -375,6 +378,81 @@ class WallpaperStoreTest {
 
         assertTrue(system.applied.isEmpty())
         assertNull(store.state.value.wallpaper)
+    }
+
+    // Ambience (FR-AMB-01, FR-AMB-03, AC-03)
+
+    private val orange = Rgb(0xC8641E)
+    private val green = Rgb(0x2E8B57)
+    private val purple = Rgb(0x7B3FC4)
+
+    @Test
+    @Verifies("FR-AMB-01", "AC-03", "FR-ANIM-10")
+    fun `each image's highlight is derived when it is downloaded, saved with it and shown once it is applied`() = runTest {
+        val yesterday = firstDay.minusDays(1)
+        publish(yesterday, portrait = FakeSystemWallpaper.image(label(yesterday), 1080, 1920, color = green))
+        publish(firstDay, portrait = FakeSystemWallpaper.image(label(firstDay), 1080, 1920, color = orange))
+        val store = startedStore()
+        store.dispatch(Action.HomeShown)
+        runCurrent()
+
+        assertEquals(listOf(orange, green), savedIndex()?.entries?.map { it.highlight })
+        assertNull(store.state.value.highlight, "Nothing applied yet: the default")
+        store.dispatch(Action.ApplyWallpaperNow)
+        runCurrent()
+        assertEquals(Highlight.of(orange), store.state.value.highlight)
+
+        // Choosing another ambience moves the highlight to its color once it is applied.
+        store.dispatch(Action.PinWallpaper(id(yesterday)))
+        runCurrent()
+        assertEquals(Highlight.of(orange), store.state.value.highlight, "Not before the crossfade")
+        store.dispatch(Action.ApplyWallpaperNow)
+        runCurrent()
+        assertEquals(Highlight.of(green), store.state.value.highlight)
+
+        // A new process restores it from the index, without decoding an image.
+        assertEquals(Highlight.of(green), startedStore().state.value.highlight)
+    }
+
+    @Test
+    @Verifies("FR-AMB-03")
+    fun `a wallpaper set elsewhere gives the highlight from the system's colors when the launcher comes back`() = runTest {
+        publish(firstDay, portrait = FakeSystemWallpaper.image(label(firstDay), 1080, 1920, color = orange))
+        val store = startedStore()
+        runJob()
+        store.dispatch(Action.HomeShown)
+        runCurrent()
+        assertEquals(Highlight.of(orange), store.state.value.highlight)
+
+        // The user sets a photo as the wallpaper in another app.
+        store.dispatch(Action.HomeHidden)
+        system.current = WallpaperId(99)
+        system.colors = listOf(Rgb(0x808080), purple)
+        store.dispatch(Action.HomeShown)
+        runCurrent()
+        assertEquals(Highlight.of(purple), store.state.value.highlight)
+
+        // The launcher's next image takes over again.
+        val nextDay = firstDay.plusDays(1)
+        publish(nextDay, portrait = FakeSystemWallpaper.image(label(nextDay), 1080, 1920, color = green))
+        store.dispatch(Action.HomeHidden)
+        after(3.hours)
+        runJob()
+        assertEquals(Highlight.of(green), store.state.value.highlight)
+    }
+
+    @Test
+    @Verifies("FR-AMB-03")
+    fun `with Daily Bing wallpaper off the highlight follows the system's colors`() = runTest {
+        storage.docs[DocName.Settings] = SettingsDoc.encode(Settings(dailyWallpaper = false))
+        system.current = WallpaperId(5)
+        system.colors = listOf(purple)
+        val store = startedStore()
+
+        store.dispatch(Action.HomeShown)
+        runCurrent()
+
+        assertEquals(Highlight.of(purple), store.state.value.highlight)
     }
 
     // Pinning and restarts (FR-WP-08, FR-GEN-07)

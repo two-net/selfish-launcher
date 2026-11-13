@@ -2,6 +2,9 @@ package io.github.twonet.selfish.ui.tokens
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
+import io.github.twonet.selfish.domain.model.Appearance
+import io.github.twonet.selfish.domain.model.Rgb
+import io.github.twonet.selfish.domain.theme.Highlight
 
 /**
  * Colors for one appearance (FR-THM-05). Every backdrop is translucent, so
@@ -56,6 +59,18 @@ val LightColors = LauncherColors(
     dim = Color(0xADFFFFFF),
     highlightDefault = Color(0xFF005A70),
 )
+
+/** [this] opaque sRGB color from the Domain as a Compose color. */
+fun Rgb.toColor(): Color = Color(OPAQUE or value)
+
+/**
+ * The ambience's highlight for the [dark] or light appearance, already
+ * adjusted for contrast in the Domain (FR-AMB-02, DESIGN §4.4).
+ */
+fun Highlight.color(dark: Boolean): Color = on(if (dark) Appearance.Dark else Appearance.Light).toColor()
+
+/** The alpha byte of an opaque color. */
+private const val OPAQUE = 0xFF shl 24
 
 /** Dark: light text on dark glass. */
 val DarkColors = LauncherColors(

@@ -4,7 +4,10 @@ import kotlinx.serialization.Serializable
 
 /** An opaque sRGB color, `0xRRGGBB`. */
 @JvmInline
-value class Rgb(val value: Int)
+value class Rgb(val value: Int) {
+    /** `#RRGGBB`, as colors are written in the saved documents. */
+    override fun toString(): String = "#%06X".format(value and 0xFFFFFF)
+}
 
 /** A Bing market code such as `en-US` (FR-WP-03). */
 @Serializable

@@ -324,7 +324,9 @@ class WallpaperReducerTest {
 
         val next = reduce(state, Action.SetDailyWallpaper(false))
 
-        assertEquals(listOf(Effect.CancelWallpaperJob, Effect.ClearWallpaperCache), next.effects)
+        // Nothing applied is remembered now, so the system is asked what it
+        // shows, for the highlight (FR-AMB-03).
+        assertEquals(listOf(Effect.CancelWallpaperJob, Effect.ClearWallpaperCache, Effect.ReadSystemWallpaper(1)), next.effects)
         assertEquals(emptyList(), next.state.wallpapers)
         assertNull(next.state.wallpaper)
         assertNull(next.state.pinned)

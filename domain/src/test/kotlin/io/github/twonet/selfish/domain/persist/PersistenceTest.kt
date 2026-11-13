@@ -10,9 +10,11 @@ import io.github.twonet.selfish.domain.model.DownloadOn
 import io.github.twonet.selfish.domain.model.FolderId
 import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Haptics
+import io.github.twonet.selfish.domain.model.HighlightSetting
 import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.model.Market
 import io.github.twonet.selfish.domain.model.PixelSize
+import io.github.twonet.selfish.domain.model.Rgb
 import io.github.twonet.selfish.domain.model.Settings
 import io.github.twonet.selfish.domain.model.SwipeDownOpens
 import io.github.twonet.selfish.domain.model.WallpaperEntry
@@ -54,6 +56,7 @@ class PersistenceTest {
         market = Market("de-DE"),
         lockScreen = true,
         downloadOn = DownloadOn.WifiOnly,
+        highlight = HighlightSetting.Blue,
         showClock = false,
         coversShow = CoversShow.RecentlyUsed,
         gridColumns = 5,
@@ -74,6 +77,7 @@ class PersistenceTest {
         market = Market("de-DE"),
         size = PixelSize(1080, 1920),
         bytes = 412345,
+        highlight = Rgb(0xC8641E),
     )
     private val glacier = WallpaperEntry(
         image = ImageId("20261112_de-DE"),
@@ -161,6 +165,18 @@ class PersistenceTest {
         assertNull(index.status.lastCheck)
         assertEquals(sampleIndex.status.lastSuccess, index.status.lastSuccess)
         assertEquals(sampleIndex.status.applied, index.status.applied)
+    }
+
+    @Test
+    @Verifies("FR-AMB-01")
+    fun `a broken highlight color costs only the color, not the image`() {
+        for (broken in listOf("\"orange\"", "\"#C8641\"", "\"#GG641E\"", "13132830", "{}")) {
+            val text = WallpaperIndexDoc.encode(sampleIndex).replace("\"#C8641E\"", broken)
+            val index = WallpaperIndexDoc.decode(text)
+
+            assertEquals(listOf(lighthouse.copy(highlight = null), glacier), index.entries, "for $broken")
+            assertEquals(glacier.image, index.pinned, "for $broken")
+        }
     }
 
     @Test

@@ -8,6 +8,7 @@ import io.github.twonet.selfish.domain.model.Animations
 import io.github.twonet.selfish.domain.model.FolderId
 import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Layout
+import io.github.twonet.selfish.domain.model.Rgb
 import io.github.twonet.selfish.domain.model.Settings
 import io.github.twonet.selfish.domain.model.DownloadOn
 import io.github.twonet.selfish.domain.model.WallpaperEntry
@@ -17,9 +18,12 @@ import io.github.twonet.selfish.domain.ports.ClockInfo
 import io.github.twonet.selfish.domain.ports.ImageId
 import io.github.twonet.selfish.domain.ports.NotificationItem
 import io.github.twonet.selfish.domain.ports.NotificationRef
+import io.github.twonet.selfish.domain.ports.WallpaperId
 import io.github.twonet.selfish.domain.ports.WallpaperScreens
 import io.github.twonet.selfish.domain.remorse.Destructive
 import io.github.twonet.selfish.domain.remorse.PendingRemorse
+import io.github.twonet.selfish.domain.theme.Highlight
+import io.github.twonet.selfish.domain.theme.HighlightColor
 import io.github.twonet.selfish.domain.wallpaper.CheckTrigger
 
 /**
@@ -114,6 +118,15 @@ data class LauncherState(
     val wallpaperStatus: WallpaperStatus = WallpaperStatus(),
     /** Wallpaper work in progress in this process. Not saved. */
     val wallpaperWork: WallpaperWork = WallpaperWork(),
+    /**
+     * What the system last reported about its home screen wallpaper, read
+     * each time the launcher comes on screen: its ID, which tells one set
+     * elsewhere apart, and its colors (FR-AMB-03). `null` until first read.
+     * Not saved.
+     */
+    val systemWallpaper: SystemWallpaperReport? = null,
+    /** How many reads of [systemWallpaper] were asked for, so a stale one can be told apart. */
+    val systemWallpaperReads: Int = 0,
     /**
      * Whether the user has granted notification access (FR-EVT-07), or
      * `null` until it has been checked, which happens each time the launcher
@@ -307,6 +320,51 @@ val LauncherState.wallpaperDue: WallpaperEntry?
                 entry.image != work.applyFailed &&
                 wallpapers.any { it.image == entry.image }
         }
+    }
+
+/** What the system reported about its home screen wallpaper (FR-AMB-03). */
+data class SystemWallpaperReport(
+    /** The system's ID for it, or `null` if it gave none. */
+    val id: WallpaperId?,
+    /** Its colors, most prominent first; none for the launcher's own image, which has its derived color. */
+    val colors: List<Rgb>,
+)
+
+/**
+ * The cached image the launcher set as the home screen wallpaper, while the
+ * system still shows it (FR-AMB-01). `null` once the system reports another
+ * ID, which means the wallpaper was set elsewhere (FR-AMB-03), and while
+ * nothing the launcher applied is cached, as with Daily Bing wallpaper off.
+ * Until the system's ID is known, the launcher's own is assumed.
+ */
+val LauncherState.launcherWallpaper: WallpaperEntry?
+    get() {
+        val applied = wallpaperStatus.applied ?: return null
+        val shown = systemWallpaper?.id
+        if (shown != null && shown != applied.id) return null
+        return wallpapers.firstOrNull { it.image == applied.image }
+    }
+
+/**
+ * The ambience's highlight color for each appearance (SRS §4.11, DESIGN
+ * §4.4), or `null` for the appearance's default token:
+ *
+ * 1. a preset, if one is chosen (FR-AMB-05);
+ * 2. else, while the launcher's image is the wallpaper, the color derived
+ *    from it (FR-AMB-01), which follows the image *applied*, not the one
+ *    due, so it moves as the new image crossfades in (FR-ANIM-10);
+ * 3. else the colors the system reports for the wallpaper (FR-AMB-03).
+ *
+ * Every one is adjusted for contrast in both appearances (FR-AMB-02).
+ */
+val LauncherState.highlight: Highlight?
+    get() {
+        val source = settings.highlight.color
+            ?: when (val own = launcherWallpaper) {
+                null -> HighlightColor.fromSystem(systemWallpaper?.colors.orEmpty())
+                else -> own.highlight
+            }
+        return source?.let(Highlight::of)
     }
 
 /** The cache index as saved in `wallpapers.json` (SRS §8). */

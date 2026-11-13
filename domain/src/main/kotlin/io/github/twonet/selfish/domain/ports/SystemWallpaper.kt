@@ -31,8 +31,12 @@ interface SystemWallpaper {
     /** The ID of the current home screen wallpaper, to detect one set elsewhere (FR-AMB-03). */
     suspend fun currentId(): WallpaperId?
 
-    /** The primary color the system reports for the current wallpaper, if any (FR-AMB-03). */
-    suspend fun systemColors(): Rgb?
+    /**
+     * The colors the system reports for the current home screen wallpaper,
+     * most prominent first (primary, secondary, tertiary), or none if it
+     * reports none (FR-AMB-03).
+     */
+    suspend fun systemColors(): List<Rgb>
 
     /** The screen's full size in pixels, in portrait, which a wallpaper is cropped to (FR-WP-04). */
     fun screenSize(): PixelSize

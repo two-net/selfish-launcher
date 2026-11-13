@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.twonet.selfish.domain.state.Action
+import io.github.twonet.selfish.domain.state.highlight
 import io.github.twonet.selfish.domain.state.reducedMotion
 import io.github.twonet.selfish.ui.components.AppIcons
 import io.github.twonet.selfish.ui.components.LocalAppIcons
@@ -21,6 +22,7 @@ import io.github.twonet.selfish.ui.components.LocalWallpaperImages
 import io.github.twonet.selfish.ui.components.WallpaperImages
 import io.github.twonet.selfish.ui.LauncherScreen
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
+import io.github.twonet.selfish.ui.tokens.color
 
 /**
  * The one Activity for every launcher surface (DESIGN §6.1). It turns the
@@ -54,9 +56,11 @@ class MainActivity : ComponentActivity() {
         val wallpapers = WallpaperImages(store::wallpaperImage)
         setContent {
             val state = store.state.collectAsStateWithLifecycle()
-            // Read apart from the rest of the state, so the theme changes only when this does.
+            // Read apart from the rest of the state, so the theme changes only when these do.
             val reducedMotion by remember { derivedStateOf { state.value.reducedMotion } }
-            LauncherTheme(reducedMotion = reducedMotion) {
+            val highlight by remember { derivedStateOf { state.value.highlight } }
+            // Always Light until #17 resolves the appearance and passes it here.
+            LauncherTheme(highlight = highlight?.color(dark = false), reducedMotion = reducedMotion) {
                 CompositionLocalProvider(LocalAppIcons provides icons, LocalWallpaperImages provides wallpapers) {
                     LauncherScreen(state.value, store::dispatch)
                 }

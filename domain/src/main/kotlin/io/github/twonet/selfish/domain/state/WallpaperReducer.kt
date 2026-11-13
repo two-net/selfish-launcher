@@ -133,17 +133,28 @@ internal fun applyDue(state: LauncherState): Next {
     )
 }
 
-/** The system set an image as the home screen wallpaper; it is recorded, and anything due next follows. */
+/**
+ * The system set an image as the home screen wallpaper; it is recorded, and
+ * anything due next follows. The system now shows the launcher's image, so a
+ * read of its wallpaper still under way is stale (FR-AMB-03). With Daily
+ * Bing wallpaper turned off meanwhile, nothing is recorded, so the system is
+ * asked again.
+ */
 internal fun wallpaperApplied(state: LauncherState, action: Action.WallpaperApplied): Next {
     val work = state.wallpaperWork
     val status = state.wallpaperStatus
+    val next = state.copy(
+        wallpaperWork = work.copy(
+            applying = work.applying.takeUnless { it == action.image },
+            applyFailed = work.applyFailed.takeUnless { it == action.image },
+        ),
+    )
+    if (!state.settings.dailyWallpaper) return applyIfHidden(next).then(::readSystemWallpaper)
     return applyIfHidden(
-        state.copy(
-            wallpaperStatus = if (state.settings.dailyWallpaper) status.copy(applied = AppliedWallpaper(action.image, action.id)) else status,
-            wallpaperWork = work.copy(
-                applying = work.applying.takeUnless { it == action.image },
-                applyFailed = work.applyFailed.takeUnless { it == action.image },
-            ),
+        next.copy(
+            wallpaperStatus = status.copy(applied = AppliedWallpaper(action.image, action.id)),
+            systemWallpaper = SystemWallpaperReport(action.id, colors = emptyList()),
+            systemWallpaperReads = state.systemWallpaperReads + 1,
         ),
     )
 }
@@ -162,8 +173,10 @@ internal fun wallpaperApplyFailed(state: LauncherState, action: Action.Wallpaper
 internal fun setDailyWallpaper(state: LauncherState, on: Boolean): Next {
     if (on == state.settings.dailyWallpaper) return Next(state)
     if (!on) {
+        // The launcher's image stays, but nothing it applied is remembered,
+        // so the highlight comes from the system's colors for it (FR-AMB-03).
         val off = withoutWallpapers(state.copy(settings = state.settings.copy(dailyWallpaper = false)))
-        return Next(off, listOf(Effect.CancelWallpaperJob, Effect.ClearWallpaperCache))
+        return Next(off, listOf(Effect.CancelWallpaperJob, Effect.ClearWallpaperCache)).then(::readSystemWallpaper)
     }
     val next = state.copy(settings = state.settings.copy(dailyWallpaper = true))
     return Next(next, listOf(Effect.ScheduleWallpaperJob(next.wifiOnly))).then { startCheck(it, CheckTrigger.User) }

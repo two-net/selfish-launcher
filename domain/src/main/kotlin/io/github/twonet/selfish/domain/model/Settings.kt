@@ -6,8 +6,7 @@ import kotlinx.serialization.Serializable
 /**
  * The stored values of SRS §4.13, with the SRS defaults (DESIGN §4.1). Saved
  * as `settings.json`, which is backed up (SRS §8). Sort A–Z, Reset layout and
- * About (FR-SET-10, FR-SET-16, FR-SET-17) are actions, not values. Highlight
- * color (FR-SET-06) arrives with its presets.
+ * About (FR-SET-10, FR-SET-16, FR-SET-17) are actions, not values.
  *
  * Adding a field with a default needs no migration. Renaming, removing or
  * restructuring one needs a migration in `SettingsDoc` and a new frozen
@@ -25,6 +24,8 @@ data class Settings(
     val lockScreen: Boolean = false,
     /** FR-SET-05. */
     val downloadOn: DownloadOn = DownloadOn.AnyNetwork,
+    /** FR-SET-06, FR-AMB-05. */
+    val highlight: HighlightSetting = HighlightSetting.Automatic,
     /** FR-SET-07: time and date on Home. */
     val showClock: Boolean = true,
     /** FR-SET-08. */
@@ -65,6 +66,30 @@ enum class AppearanceMode {
     @SerialName("system") System,
     @SerialName("light") Light,
     @SerialName("dark") Dark,
+}
+
+/**
+ * An appearance resolved from [AppearanceMode] and the device: what the
+ * colors are drawn for (FR-THM-01). #17 resolves it; never saved.
+ */
+enum class Appearance { Light, Dark }
+
+/**
+ * The highlight color setting (FR-SET-06, FR-AMB-05): Automatic, from the
+ * wallpaper, or one of 8 preset colors. A preset is adjusted for each
+ * appearance like a derived color (FR-AMB-02), so [color] is only its source.
+ */
+@Serializable
+enum class HighlightSetting(val color: Rgb?) {
+    @SerialName("automatic") Automatic(null),
+    @SerialName("red") Red(Rgb(0xE0393E)),
+    @SerialName("orange") Orange(Rgb(0xF57C1F)),
+    @SerialName("yellow") Yellow(Rgb(0xF2C12E)),
+    @SerialName("green") Green(Rgb(0x3DAA5C)),
+    @SerialName("teal") Teal(Rgb(0x14A3A3)),
+    @SerialName("blue") Blue(Rgb(0x2F7FE0)),
+    @SerialName("purple") Purple(Rgb(0x8A4FD6)),
+    @SerialName("pink") Pink(Rgb(0xE0457B)),
 }
 
 @Serializable

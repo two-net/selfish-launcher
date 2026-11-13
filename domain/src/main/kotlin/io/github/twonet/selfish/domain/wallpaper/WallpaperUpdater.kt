@@ -11,6 +11,7 @@ import io.github.twonet.selfish.domain.ports.ImageVariant
 import io.github.twonet.selfish.domain.ports.Ports
 import io.github.twonet.selfish.domain.ports.WallpaperId
 import io.github.twonet.selfish.domain.ports.WallpaperScreens
+import io.github.twonet.selfish.domain.theme.HighlightColor
 import kotlinx.coroutines.CancellationException
 import java.io.IOException
 import java.time.Clock
@@ -44,7 +45,8 @@ class WallpaperUpdater(
      *    first run or after a gap (IF-WP-04).
      * 3. Each entry not already cached, newest first: the portrait version,
      *    else the landscape one (FR-WP-04), checked to be a valid image within
-     *    the size limit (FR-WP-14), then stored. The first failure stops it.
+     *    the size limit (FR-WP-14), then stored with the highlight color
+     *    derived from it (FR-AMB-01). The first failure stops it.
      */
     suspend fun check(
         trigger: CheckTrigger,
@@ -89,7 +91,9 @@ class WallpaperUpdater(
             if (bytes.isEmpty() || bytes.size > WallpaperPolicy.MAX_IMAGE_BYTES) continue
             val info = ports.systemWallpaper.inspect(bytes) ?: continue
             if (info.width <= 0 || info.height <= 0) continue
-            val entry = WallpaperPolicy.entryOf(item, image, PixelSize(info.width, info.height), bytes.size) ?: return null
+            val entry = WallpaperPolicy.entryOf(item, image, PixelSize(info.width, info.height), bytes.size)
+                ?.copy(highlight = HighlightColor.derive(info.samples))
+                ?: return null
             ports.localStorage.writeImage(image, bytes)
             return entry
         }

@@ -229,6 +229,17 @@ class LauncherStore(
         if (effect.screens.home) dispatch(Action.WallpaperApplied(image, id))
     }
 
+    /**
+     * Reports the system's home screen wallpaper (FR-AMB-03). If it can't be
+     * read, nothing is reported, and the highlight stays as it is.
+     */
+    private suspend fun readSystemWallpaper(number: Int) {
+        val wallpaper = ports.systemWallpaper
+        val id = wallpaper.currentId()
+        val colors = wallpaper.systemColors()
+        dispatch(Action.SystemWallpaperRead(number, id, colors))
+    }
+
     /** The device's default apps, or none if they can't be looked up: a first run must still get its layout. */
     private suspend fun defaultApps(): DefaultApps = try {
         ports.appCatalog.defaultApps()
@@ -275,6 +286,7 @@ class LauncherStore(
                 is Effect.ScheduleWallpaperJob -> ports.wallpaperScheduler.schedulePeriodic(effect.wifiOnly)
                 is Effect.ScheduleWallpaperRetry -> ports.wallpaperScheduler.scheduleRetry(effect.delay, effect.wifiOnly)
                 Effect.CancelWallpaperJob -> ports.wallpaperScheduler.cancel()
+                is Effect.ReadSystemWallpaper -> readSystemWallpaper(effect.number)
             }
         } catch (e: CancellationException) {
             throw e

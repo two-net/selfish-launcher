@@ -88,6 +88,12 @@ issues add their items here. Every release PR signs off the whole list.
 - [ ] [AR-06, NFR-PWR-02] `adb shell dumpsys jobscheduler` shows the launcher's one periodic job (3 hours, a network required, persisted across a reboot) and at most one retry; it holds no wake lock, alarm or foreground service, and turning Daily off removes both jobs.
 - [ ] [FR-WP-13] Turning Daily Bing wallpaper off (Settings, #18) keeps the current system wallpaper, hides the Ambiences row and the Events card, and leaves `noBackupFilesDir/wallpapers/` empty (`adb shell run-as io.github.twonet.selfish ls no_backup`).
 
+## Ambience (SRS §4.11)
+
+- [ ] [FR-AMB-01, FR-AMB-02, AC-03] On a device, when "Refresh now" brings a new image, page headers, press glows, the pulley flash, the remorse bar and the Top Menu's outlines take a prominent color from it, and move there over the Ambient duration as the image crossfades in. Choosing another ambience in the Top Menu does the same. The color stays legible over a bright and a dark image (Dark arrives with #17). Checked with a screen recording.
+- [ ] [FR-AMB-03] Setting a photo as the wallpaper in the system's picker or a gallery app and returning to Home gives a highlight from the photo's colors; a black-and-white photo gives the default highlight. With Daily Bing wallpaper on, the launcher's next image takes over again.
+- [ ] [FR-AMB-04] The highlight colors only headers and states: page headers, press glows, selected and active outlines, the remorse bar, pulley highlights and text cursors. Body text, labels and notification text never take it.
+
 ## Bing interface (SRS §5.3)
 
 - [ ] [AC-11, NFR-PRIV-01, IF-WP-02] With Daily Bing wallpaper on, a 24-hour capture of the reference device's traffic (for example PCAPdroid filtered to the launcher, or at the router) shows the launcher connecting only to `bing.com` and `bing.net` hosts, all over TLS on port 443.

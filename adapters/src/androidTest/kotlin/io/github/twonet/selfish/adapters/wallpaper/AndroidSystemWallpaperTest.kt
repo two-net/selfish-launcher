@@ -11,8 +11,11 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.twonet.selfish.domain.Verifies
 import io.github.twonet.selfish.domain.model.Bounds
+import io.github.twonet.selfish.domain.model.Rgb
 import io.github.twonet.selfish.domain.ports.WallpaperScreens
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -125,5 +128,42 @@ class AndroidSystemWallpaperTest {
         val lockOnly = wallpaper.apply(jpeg(1080, 1920, Color.BLUE), Bounds(108, 0, 972, 1920), WallpaperScreens.Lock)
         assertEquals(lockOnly.value, manager.getWallpaperId(WallpaperManager.FLAG_LOCK))
         assertEquals(both.value, manager.getWallpaperId(WallpaperManager.FLAG_SYSTEM))
+    }
+
+    @Test
+    @Verifies("FR-AMB-03")
+    fun aWallpaperSetElsewhereHasAnotherIdAndTheSystemReportsItsColors() = runBlocking {
+        assumeChangingTheWallpaperIsAllowed()
+        val ours = wallpaper.apply(jpeg(1080, 1920), Bounds(108, 0, 972, 1920), WallpaperScreens.Home)
+
+        // Another app sets a blue wallpaper.
+        val blue = Bitmap.createBitmap(1080, 1920, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.rgb(30, 60, 220)) }
+        manager.setBitmap(blue, null, false, WallpaperManager.FLAG_SYSTEM)
+        blue.recycle()
+
+        assertNotEquals(ours, wallpaper.currentId())
+        // The system works out a new wallpaper's colors in the background.
+        val reported = withTimeoutOrNull(COLORS_TIMEOUT_MS) {
+            var colors = wallpaper.systemColors()
+            while (!colors.firstOrNull().isBlue()) {
+                delay(POLL_MS)
+                colors = wallpaper.systemColors()
+            }
+            colors
+        }
+        assertNotNull(reported, "The primary color becomes blue, was ${wallpaper.systemColors()}")
+    }
+
+    private fun Rgb?.isBlue(): Boolean {
+        if (this == null) return false
+        val red = (value shr 16) and 0xFF
+        val green = (value shr 8) and 0xFF
+        val blue = value and 0xFF
+        return blue > red + 60 && blue > green + 60
+    }
+
+    private companion object {
+        const val COLORS_TIMEOUT_MS = 10_000L
+        const val POLL_MS = 100L
     }
 }

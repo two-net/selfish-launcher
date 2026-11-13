@@ -6,9 +6,11 @@ import io.github.twonet.selfish.domain.model.AppearanceMode
 import io.github.twonet.selfish.domain.model.Bounds
 import io.github.twonet.selfish.domain.model.FolderId
 import io.github.twonet.selfish.domain.model.GridItem
+import io.github.twonet.selfish.domain.model.HighlightSetting
 import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.model.DownloadOn
 import io.github.twonet.selfish.domain.model.Market
+import io.github.twonet.selfish.domain.model.Rgb
 import io.github.twonet.selfish.domain.model.Settings
 import io.github.twonet.selfish.domain.model.WallpaperIndex
 import io.github.twonet.selfish.domain.ports.ClockInfo
@@ -223,4 +225,13 @@ sealed interface Action {
 
     /** "Download on" (FR-SET-05, FR-WP-06). Settings (#18) sends it. */
     data class SetDownloadOn(val downloadOn: DownloadOn) : Action
+
+    /**
+     * The system reported its home screen wallpaper as [id], with [colors],
+     * for the read numbered [number] (FR-AMB-03). A stale read is ignored.
+     */
+    data class SystemWallpaperRead(val number: Int, val id: WallpaperId?, val colors: List<Rgb>) : Action
+
+    /** "Highlight color": Automatic or a preset (FR-SET-06, FR-AMB-05). Settings (#18) sends it. */
+    data class SetHighlight(val setting: HighlightSetting) : Action
 }

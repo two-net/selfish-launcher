@@ -128,7 +128,12 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
 
     // Showing Home checks for a new wallpaper if the last check is over
     // 3 hours old (FR-WP-02); the check itself decides, knowing the time.
-    Action.HomeShown -> offerDefaultHome(state.copy(homeShown = true)).then { startCheck(it, CheckTrigger.HomeShown) }
+    // It also asks the system which wallpaper it shows, since the user may
+    // have set one elsewhere meanwhile (FR-AMB-03).
+    Action.HomeShown ->
+        offerDefaultHome(state.copy(homeShown = true))
+            .then { startCheck(it, CheckTrigger.HomeShown) }
+            .then(::readSystemWallpaper)
 
     // The launched app is now in front, so the launch is over (FR-GEN-05).
     // A wallpaper waiting for a gesture to end can be applied now.
@@ -379,6 +384,10 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
     is Action.SetWallpaperLockScreen -> setLockScreen(state, action.on)
 
     is Action.SetDownloadOn -> setDownloadOn(state, action.downloadOn)
+
+    is Action.SystemWallpaperRead -> systemWallpaperRead(state, action)
+
+    is Action.SetHighlight -> setHighlight(state, action.setting)
 }
 
 /**

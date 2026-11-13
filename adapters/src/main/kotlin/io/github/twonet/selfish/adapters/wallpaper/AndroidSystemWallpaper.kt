@@ -28,16 +28,19 @@ import kotlin.math.roundToInt
  *
  * - **Checking** decodes the whole image, so a truncated or corrupt file is
  *   rejected before it is ever stored (FR-WP-14), and samples it at most
- *   128 pixels across for the highlight color (#16).
+ *   128 pixels across for the highlight color (FR-AMB-01).
  * - **Applying** decodes only the crop rectangle, which already has the
  *   screen's shape, so the system's own crop hints never matter (FR-WP-04,
  *   R-5), and sets it on the home screen, and the lock screen too when asked
  *   (FR-WP-05). Setting the home screen alone leaves the lock screen as it
  *   was.
  *
- * Main-safe: decoding runs on [Dispatchers.Default], the system call on
- * [Dispatchers.IO] (NFR-PERF-06). The system's colors (FR-AMB-03) arrive with
- * #16, and parallax (FR-ANIM-14) is deferred.
+ * - **Identifying** the wallpaper the system shows, and the colors it
+ *   reports for it, tells one set elsewhere apart and gives its highlight
+ *   (FR-AMB-03).
+ *
+ * Main-safe: decoding runs on [Dispatchers.Default], the system calls on
+ * [Dispatchers.IO] (NFR-PERF-06). Parallax (FR-ANIM-14) is deferred.
  */
 class AndroidSystemWallpaper(context: Context) : SystemWallpaper {
     private val appContext = context.applicationContext
@@ -89,7 +92,15 @@ class AndroidSystemWallpaper(context: Context) : SystemWallpaper {
         manager.getWallpaperId(WallpaperManager.FLAG_SYSTEM).takeIf { it > 0 }?.let(::WallpaperId)
     }
 
-    override suspend fun systemColors(): Rgb? = null
+    /**
+     * The system computes a static wallpaper's colors after it is set, so
+     * right after a change they may still be the old one's, or missing.
+     * A live wallpaper may report none.
+     */
+    override suspend fun systemColors(): List<Rgb> = withContext(Dispatchers.IO) {
+        val colors = manager.getWallpaperColors(WallpaperManager.FLAG_SYSTEM) ?: return@withContext emptyList()
+        listOfNotNull(colors.primaryColor, colors.secondaryColor, colors.tertiaryColor).map { Rgb(it.toArgb() and 0xFFFFFF) }
+    }
 
     /**
      * The default display's full size, with the system bars and cutouts, as

@@ -12,7 +12,8 @@
         "width": 1080,
         "height": 1920
       },
-      "bytes": 412345
+      "bytes": 412345,
+      "highlight": "#C8641E"
     },
     {
       "image": "20261112_de-DE",
@@ -25,7 +26,8 @@
         "width": 1920,
         "height": 1080
       },
-      "bytes": 398765
+      "bytes": 398765,
+      "highlight": null
     }
   ],
   "pinned": "20261112_de-DE",

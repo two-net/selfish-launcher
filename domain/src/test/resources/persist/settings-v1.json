@@ -5,6 +5,7 @@
   "market": "de-DE",
   "lockScreen": true,
   "downloadOn": "wifi-only",
+  "highlight": "blue",
   "showClock": false,
   "coversShow": "recently-used",
   "gridColumns": 5,

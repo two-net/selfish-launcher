@@ -5,8 +5,11 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import io.github.twonet.selfish.domain.Verifies
+import io.github.twonet.selfish.domain.model.Appearance
+import io.github.twonet.selfish.domain.model.HighlightSetting
 import io.github.twonet.selfish.domain.model.Rgb
 import io.github.twonet.selfish.domain.theme.Contrast
+import io.github.twonet.selfish.domain.theme.Highlight
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -18,7 +21,7 @@ import kotlin.test.assertTrue
  * over wallpapers that don't need it.
  */
 class DesignTokensTest {
-    private val appearances = mapOf("Light" to LightColors, "Dark" to DarkColors)
+    private val appearances = mapOf(Appearance.Light to LightColors, Appearance.Dark to DarkColors)
     private val wallpapers = mapOf("white" to Rgb(0xFFFFFF), "black" to Rgb(0x000000))
 
     private fun LauncherColors.backdrops() = mapOf("glass" to glass, "scrim" to scrim, "dim" to dim)
@@ -26,12 +29,12 @@ class DesignTokensTest {
     private val Color.rgb get() = Rgb(toArgb() and 0xFFFFFF)
 
     /** Each backdrop of each appearance, as it looks over each worst-case wallpaper. */
-    private class Case(val name: String, val colors: LauncherColors, val background: Rgb)
+    private class Case(val name: String, val appearance: Appearance, val colors: LauncherColors, val background: Rgb)
 
     private val worstCases = appearances.flatMap { (appearance, colors) ->
         wallpapers.flatMap { (wallpaper, color) ->
             colors.backdrops().map { (backdrop, fill) ->
-                Case("$appearance $backdrop over $wallpaper", colors, Contrast.composite(fill.rgb, fill.alpha, color))
+                Case("$appearance $backdrop over $wallpaper", appearance, colors, Contrast.composite(fill.rgb, fill.alpha, color))
             }
         }
     }
@@ -58,6 +61,34 @@ class DesignTokensTest {
             .map { (case, ratio) -> "${case.name}: %.2f:1".format(ratio) }
 
         assertEquals(emptyList(), failures, "The highlight needs ${Contrast.LARGE_TEXT}:1")
+    }
+
+    @Test
+    @Verifies("NFR-A11Y-03", "FR-AMB-02", "FR-AMB-05")
+    fun `an adjusted highlight reaches large-text contrast on every backdrop`() {
+        // The Domain adjusts against the worst glass it assumes for each
+        // appearance (DESIGN §4.4); these are the real backdrops. Every
+        // preset, and colors of every hue and lightness, as a wallpaper
+        // might give them.
+        val levels = listOf(0x00, 0x40, 0x80, 0xC0, 0xFF)
+        val sweep = levels.flatMap { r -> levels.flatMap { g -> levels.map { b -> Rgb((r shl 16) or (g shl 8) or b) } } }
+        val sources = HighlightSetting.entries.mapNotNull { it.color } + sweep
+        val failures = worstCases.flatMap { case ->
+            sources.map { it to Highlight.of(it).on(case.appearance) }
+                .filter { (_, shown) -> Contrast.ratio(shown, case.background) < Contrast.LARGE_TEXT }
+                .map { (source, shown) -> "${case.name}: $source shown as $shown is %.2f:1".format(Contrast.ratio(shown, case.background)) }
+        }
+
+        assertEquals(emptyList(), failures, "The highlight needs ${Contrast.LARGE_TEXT}:1")
+    }
+
+    @Test
+    @Verifies("FR-AMB-02")
+    fun `a highlight from the Domain is shown as the same opaque color`() {
+        val highlight = Highlight(light = Rgb(0x123456), dark = Rgb(0xABCDEF))
+
+        assertEquals(Color(0xFF123456), highlight.color(dark = false))
+        assertEquals(Color(0xFFABCDEF), highlight.color(dark = true))
     }
 
     @Test

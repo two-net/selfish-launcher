@@ -94,4 +94,10 @@ sealed interface Effect {
 
     /** Cancels every scheduled check (FR-WP-13). */
     data object CancelWallpaperJob : Effect
+
+    /**
+     * Asks the system for its home screen wallpaper's ID and colors, then
+     * dispatches [Action.SystemWallpaperRead] with [number] (FR-AMB-03).
+     */
+    data class ReadSystemWallpaper(val number: Int) : Effect
 }

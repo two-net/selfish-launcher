@@ -5,6 +5,7 @@ package io.github.twonet.selfish.domain.model
 import io.github.twonet.selfish.domain.persist.InstantSerializer
 import io.github.twonet.selfish.domain.persist.LenientListSerializer
 import io.github.twonet.selfish.domain.persist.LocalDateSerializer
+import io.github.twonet.selfish.domain.persist.OptionalRgbSerializer
 import io.github.twonet.selfish.domain.ports.ImageId
 import io.github.twonet.selfish.domain.ports.WallpaperId
 import kotlinx.serialization.Serializable
@@ -15,7 +16,7 @@ import java.time.LocalDate
 /**
  * A cached image of the day (FR-WP-07, SRS §8), as Events, the Top Menu and
  * Wallpaper details identify it (FR-EVT-03, FR-TOP-03, FR-WP-09, FR-WP-10).
- * Saved in the cache index; #16 adds the highlight color derived from it.
+ * Saved in the cache index, with the highlight color derived from it.
  */
 @Serializable
 data class WallpaperEntry(
@@ -32,6 +33,15 @@ data class WallpaperEntry(
     val size: PixelSize,
     /** The image file's size, for the cache budget (NFR-PWR-04). */
     val bytes: Int,
+    /**
+     * The image's most prominent saturated color, derived once when it was
+     * downloaded and before any adjustment (FR-AMB-01, DESIGN §4.4), so
+     * switching ambiences never decodes an image. `null` when the image has
+     * none, which means the default highlight; so do images cached before
+     * #16, until newer ones arrive.
+     */
+    @Serializable(with = OptionalRgbSerializer::class)
+    val highlight: Rgb? = null,
 ) {
     init {
         require(size.width > 0 && size.height > 0) { "size must be positive, was $size" }
@@ -43,7 +53,7 @@ data class WallpaperEntry(
 @Serializable
 data class AppliedWallpaper(
     val image: ImageId,
-    /** Tells a wallpaper set elsewhere since then apart (FR-AMB-03, #16). */
+    /** Tells a wallpaper set elsewhere since then apart (FR-AMB-03). */
     val id: WallpaperId,
 )
 
