@@ -1,6 +1,7 @@
 package io.github.twonet.selfish.domain.state
 
 import io.github.twonet.selfish.domain.Verifies
+import io.github.twonet.selfish.domain.model.Animations
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.AppId
 import io.github.twonet.selfish.domain.model.AppearanceMode
@@ -48,6 +49,32 @@ class LauncherReducerTest {
             listOf(Effect.LaunchApp(app("Maps").id, bounds), Effect.DispatchAfter(LAUNCH_TIMEOUT, Action.LaunchTimedOut(1))),
             next.effects,
         )
+    }
+
+    @Test
+    @Verifies("FR-ANIM-15", "NFR-A11Y-05")
+    fun `motion is reduced by the system's removed animations or by the Animations setting`() {
+        assertFalse(LauncherState().reducedMotion)
+        assertTrue(LauncherState(settings = Settings(animations = Animations.Reduced)).reducedMotion)
+
+        val off = reduce(LauncherState(), Action.SystemAnimationsChanged(off = true)).state
+        assertTrue(off.systemAnimationsOff)
+        assertTrue(off.reducedMotion)
+        assertSame(off, reduce(off, Action.SystemAnimationsChanged(off = true)).state)
+        assertFalse(reduce(off, Action.SystemAnimationsChanged(off = false)).state.reducedMotion)
+    }
+
+    @Test
+    @Verifies("FR-ANIM-02", "FR-ANIM-15")
+    fun `under reduced motion an app opens without growing from what was tapped`() {
+        val bounds = Bounds(1, 2, 3, 4)
+        val reduced = LauncherState(apps = listOf(app("Maps")), systemAnimationsOff = true)
+
+        val next = reduce(reduced, Action.Launch(app("Maps").id, bounds))
+
+        assertEquals(Effect.LaunchApp(app("Maps").id, bounds, animate = false), next.effects.first())
+        val reducedSetting = LauncherState(settings = Settings(animations = Animations.Reduced))
+        assertEquals(Effect.LaunchApp(app("Maps").id, bounds, animate = false), reduce(reducedSetting, Action.Launch(app("Maps").id, bounds)).effects.first())
     }
 
     @Test

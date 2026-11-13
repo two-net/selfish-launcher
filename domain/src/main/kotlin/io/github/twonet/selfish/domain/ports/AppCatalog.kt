@@ -24,8 +24,12 @@ interface AppCatalog {
      */
     suspend fun icon(app: AppId, sizePx: Int): AppIconImage?
 
-    /** Starts [app], growing its window from [from] when given (FR-GEN-05, FR-ANIM-02). */
-    suspend fun launch(app: AppId, from: Bounds?)
+    /**
+     * Starts [app]. With [animate], its window grows from [from] when given
+     * (FR-GEN-05, FR-ANIM-02); without, it appears with no window animation,
+     * for reduced motion (FR-ANIM-15).
+     */
+    suspend fun launch(app: AppId, from: Bounds?, animate: Boolean)
 
     /** Opens the system's app-info screen for [app] (FR-GRID-06). */
     suspend fun openAppInfo(app: AppId)

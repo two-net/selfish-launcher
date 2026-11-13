@@ -113,7 +113,26 @@ class LauncherStoreTest {
         store.dispatch(Action.Launch(maps.id, bounds))
         runCurrent()
 
-        assertEquals(listOf<Pair<AppId, Bounds?>>(maps.id to bounds), catalog.launched)
+        assertEquals(listOf(FakeAppCatalog.Launched(maps.id, bounds)), catalog.launched)
+    }
+
+    @Test
+    @Verifies("FR-ANIM-15", "NFR-A11Y-05")
+    fun `the system's removed animations are followed, and launches then don't animate`() = runTest {
+        val store = startedStore()
+        assertFalse(store.state.value.reducedMotion)
+
+        os.animationsOff.value = true
+        runCurrent()
+        assertTrue(store.state.value.reducedMotion)
+
+        store.dispatch(Action.Launch(maps.id, null))
+        runCurrent()
+        assertEquals(listOf(FakeAppCatalog.Launched(maps.id, null, animate = false)), catalog.launched)
+
+        os.animationsOff.value = false
+        runCurrent()
+        assertFalse(store.state.value.reducedMotion)
     }
 
     @Test
@@ -246,7 +265,7 @@ class LauncherStoreTest {
     @Test
     fun `a failing effect does not stop the store`() = runTest {
         val failing = object : AppCatalog by catalog {
-            override suspend fun launch(app: AppId, from: Bounds?) = error("App removed")
+            override suspend fun launch(app: AppId, from: Bounds?, animate: Boolean) = error("App removed")
         }
         val store = LauncherStore(backgroundScope, fakePorts(appCatalog = failing))
         store.start()
@@ -559,7 +578,7 @@ class LauncherStoreTest {
         store.dispatch(Action.DismissNotification("k1"))
         runCurrent()
 
-        assertEquals(listOf<Pair<String, Bounds?>>("k1" to bounds), notes.opened)
+        assertEquals(listOf(FakeNotificationSource.Opened("k1", bounds)), notes.opened)
         assertEquals(listOf(setOf(message.ref)), notes.dismissed)
         assertEquals(emptyList(), store.state.value.notifications)
     }

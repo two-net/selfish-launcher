@@ -9,8 +9,12 @@ import androidx.activity.addCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.twonet.selfish.domain.state.Action
+import io.github.twonet.selfish.domain.state.reducedMotion
 import io.github.twonet.selfish.ui.components.AppIcons
 import io.github.twonet.selfish.ui.components.LocalAppIcons
 import io.github.twonet.selfish.ui.components.LocalWallpaperImages
@@ -50,7 +54,9 @@ class MainActivity : ComponentActivity() {
         val wallpapers = WallpaperImages(store::wallpaperImage)
         setContent {
             val state = store.state.collectAsStateWithLifecycle()
-            LauncherTheme {
+            // Read apart from the rest of the state, so the theme changes only when this does.
+            val reducedMotion by remember { derivedStateOf { state.value.reducedMotion } }
+            LauncherTheme(reducedMotion = reducedMotion) {
                 CompositionLocalProvider(LocalAppIcons provides icons, LocalWallpaperImages provides wallpapers) {
                     LauncherScreen(state.value, store::dispatch)
                 }

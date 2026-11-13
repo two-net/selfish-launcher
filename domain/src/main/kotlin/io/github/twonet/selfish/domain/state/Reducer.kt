@@ -100,7 +100,8 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
     // One launch at a time: repeated taps while an app is starting are
     // ignored (FR-GEN-05). Launching closes any context menu, so it isn't
     // still open on return.
-    is Action.Launch -> startLaunch(state) { Effect.LaunchApp(action.app, action.from) }
+    // Under reduced motion the app opens without growing (FR-ANIM-15).
+    is Action.Launch -> startLaunch(state) { Effect.LaunchApp(action.app, action.from, animate = !state.reducedMotion) }
 
     // A timer from an earlier launch must not end a newer one early.
     is Action.LaunchTimedOut ->
@@ -131,6 +132,9 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
         Next(state, listOf(Effect.FinishRun(action.run)))
 
     is Action.ClockChanged -> Next(state.copy(clock = action.clock))
+
+    is Action.SystemAnimationsChanged ->
+        if (action.off == state.systemAnimationsOff) Next(state) else Next(state.copy(systemAnimationsOff = action.off))
 
     is Action.OpenContextMenu ->
         Next(state.copy(overlays = state.overlays.filterNot { it is Overlay.ContextMenu } + Overlay.ContextMenu(action.target)))
@@ -293,7 +297,7 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
         if (state.notifications.none { it.key == action.key }) {
             Next(state)
         } else {
-            startLaunch(state) { Effect.OpenNotification(action.key, action.from) }
+            startLaunch(state) { Effect.OpenNotification(action.key, action.from, animate = !state.reducedMotion) }
         }
 
     is Action.DismissNotification -> {

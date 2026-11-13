@@ -176,15 +176,17 @@ class HomeTest {
     }
 
     @Test
-    @Verifies("FR-HOME-08")
+    @Verifies("FR-HOME-08", "FR-ANIM-13")
     fun withNoCoversHomeShowsTheWayToTheApps() {
         showHome(listOf(maps), home = emptyList())
         val hint = string(R.string.home_hint_no_covers)
 
         rule.onNodeWithText(hint).assertIsDisplayed()
+        rule.onNodeWithTag(HomeTags.HINT).assertIsDisplayed()
 
         setHome(listOf(maps))
         rule.onNodeWithText(hint).assertDoesNotExist()
+        rule.onNodeWithTag(HomeTags.HINT).assertDoesNotExist()
     }
 
     @Test

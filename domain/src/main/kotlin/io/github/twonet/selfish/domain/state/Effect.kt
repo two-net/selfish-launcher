@@ -9,7 +9,11 @@ import kotlin.time.Duration
 
 /** Work the reducer asks for, carried out through the ports by [LauncherStore]. */
 sealed interface Effect {
-    data class LaunchApp(val app: AppId, val from: Bounds?) : Effect
+    /**
+     * Starts [app], growing its window from [from] when [animate], or with no
+     * window animation under reduced motion (FR-ANIM-02, FR-ANIM-15).
+     */
+    data class LaunchApp(val app: AppId, val from: Bounds?, val animate: Boolean = true) : Effect
 
     data class FinishRun(val run: ScheduledRun) : Effect
 
@@ -41,8 +45,8 @@ sealed interface Effect {
     /** Opens the system's notification access screen (FR-EVT-07, FR-ONB-04). */
     data object RequestNotificationAccess : Effect
 
-    /** Opens what the notification [key] points to (FR-EVT-04). */
-    data class OpenNotification(val key: String, val from: Bounds?) : Effect
+    /** Opens what the notification [key] points to (FR-EVT-04), animated like [LaunchApp]. */
+    data class OpenNotification(val key: String, val from: Bounds?, val animate: Boolean = true) : Effect
 
     /** Dismisses [refs], as they were when shown (FR-EVT-05, FR-EVT-06). */
     data class DismissNotifications(val refs: Set<NotificationRef>) : Effect

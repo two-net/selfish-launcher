@@ -57,4 +57,10 @@ object Sizes {
 
     /** How strongly the wallpaper is blurred behind the open App Grid, where supported (FR-GRID-01). */
     val BlurRadius: Dp = 32.dp
+
+    /** The glowing touch point of a gesture hint, about a fingertip across (FR-ANIM-13). */
+    val HintTouchPoint: Dp = 32.dp
+
+    /** How far a gesture hint's touch point travels as it traces a swipe (FR-ANIM-13). */
+    val HintTravel: Dp = 96.dp
 }

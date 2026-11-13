@@ -64,7 +64,7 @@ import io.github.twonet.selfish.ui.components.pressable
 import io.github.twonet.selfish.ui.components.pulleyActions
 import io.github.twonet.selfish.ui.motion.SidewaysClaims
 import io.github.twonet.selfish.ui.tokens.Emphasis
-import io.github.twonet.selfish.ui.tokens.Motion
+import io.github.twonet.selfish.ui.tokens.LauncherTheme
 import io.github.twonet.selfish.ui.tokens.PENDING_ALPHA
 import io.github.twonet.selfish.ui.tokens.Shapes
 import io.github.twonet.selfish.ui.tokens.Sizes
@@ -126,6 +126,7 @@ internal fun EventsScreen(
         if (!state.showsAccessCard && groups.isEmpty()) add(EventsEntry.NoNewEvents)
     }
 
+    val motion = LauncherTheme.motion
     PulleyMenu(
         items = pulley,
         atTop = { !listState.canScrollBackward },
@@ -139,7 +140,7 @@ internal fun EventsScreen(
         ) {
             items(entries, key = EventsEntry::key) { entry ->
                 // Entries fade in and out and move over the Medium duration, as the grid's do (FR-ANIM-08).
-                val modifier = Modifier.animateItem(fadeInSpec = Motion.reflow(), placementSpec = Motion.reflow(), fadeOutSpec = Motion.reflow())
+                val modifier = Modifier.animateItem(fadeInSpec = motion.fadeIn(), placementSpec = motion.reflow(), fadeOutSpec = motion.fadeOut())
                 when (entry) {
                     EventsEntry.Header -> PageHeader(
                         title = state.clock?.let { today(it) }.orEmpty(),

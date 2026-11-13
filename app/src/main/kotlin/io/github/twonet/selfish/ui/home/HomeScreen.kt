@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -22,6 +23,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -42,6 +44,7 @@ import io.github.twonet.selfish.domain.state.covers
 import io.github.twonet.selfish.ui.components.ContextMenu
 import io.github.twonet.selfish.ui.components.ContextMenuItem
 import io.github.twonet.selfish.ui.components.Cover
+import io.github.twonet.selfish.ui.components.GestureHint
 import io.github.twonet.selfish.ui.components.Glass
 import io.github.twonet.selfish.ui.components.LauncherText
 import io.github.twonet.selfish.ui.components.ReorderableGrid
@@ -49,6 +52,7 @@ import io.github.twonet.selfish.ui.components.onBoundsInWindow
 import io.github.twonet.selfish.ui.components.onUnhandledLongPress
 import io.github.twonet.selfish.ui.components.pressable
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
+import io.github.twonet.selfish.ui.tokens.Sizes
 import io.github.twonet.selfish.ui.tokens.Spacing
 
 /**
@@ -118,6 +122,7 @@ fun HomeScreen(
 internal object HomeTags {
     const val SCREEN = "home"
     const val COVERS = "home-covers"
+    const val HINT = "home-gesture-hint"
 }
 
 @Composable
@@ -154,14 +159,30 @@ private fun Covers(covers: List<AppEntry>, menu: MenuTarget?, dispatch: (Action)
     }
 }
 
-/** With no covers, Home points the way to the apps (FR-HOME-08). */
+/**
+ * With no covers, Home points the way to the apps (FR-HOME-08), with a
+ * glowing touch point tracing the swipe up above the words (FR-ANIM-13).
+ */
 @Composable
 private fun EmptyHint(modifier: Modifier) {
-    Glass(modifier = modifier.padding(Spacing.Gutter)) {
-        LauncherText(
-            text = stringResource(R.string.home_hint_no_covers),
-            modifier = Modifier.padding(horizontal = Spacing.Gutter, vertical = Spacing.Medium),
-            textAlign = TextAlign.Center,
+    Column(modifier.padding(Spacing.Gutter), horizontalAlignment = Alignment.CenterHorizontally) {
+        GestureHint(
+            from = SWIPE_UP_FROM,
+            to = SWIPE_UP_TO,
+            modifier = Modifier
+                .size(width = Sizes.HintTouchPoint, height = Sizes.HintTravel)
+                .testTag(HomeTags.HINT),
         )
+        Glass {
+            LauncherText(
+                text = stringResource(R.string.home_hint_no_covers),
+                modifier = Modifier.padding(horizontal = Spacing.Gutter, vertical = Spacing.Medium),
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
+
+/** A swipe up, as fractions of the hint's width and height. */
+private val SWIPE_UP_FROM = Offset(0.5f, 1f)
+private val SWIPE_UP_TO = Offset(0.5f, 0f)

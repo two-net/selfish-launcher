@@ -52,7 +52,6 @@ import io.github.twonet.selfish.ui.grid.AppTile
 import io.github.twonet.selfish.ui.grid.appKey
 import io.github.twonet.selfish.ui.grid.labelLines
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
-import io.github.twonet.selfish.ui.tokens.Motion
 import io.github.twonet.selfish.ui.tokens.Spacing
 
 /**
@@ -95,7 +94,8 @@ internal fun FolderPanel(
     }
     val progress = remember { Animatable(0f) }
     val isOpen = open != null
-    LaunchedEffect(isOpen) { progress.animateTo(if (isOpen) 1f else 0f, Motion.folder()) }
+    val motion = LauncherTheme.motion
+    LaunchedEffect(isOpen) { progress.animateTo(if (isOpen) 1f else 0f, motion.folder(opening = isOpen)) }
     val closed by remember { derivedStateOf { progress.value == 0f } }
     val folder = last.folder
     if (folder == null || (!isOpen && !handoff.holding && closed)) return
@@ -142,7 +142,8 @@ internal fun FolderPanel(
                     val p = progress.value
                     val to = panel.bounds
                     val from = tile ?: Rect(to.center, Size.Zero)
-                    if (to.width > 0f && to.height > 0f && !last.draggedOut) {
+                    // Under reduced motion it only fades (FR-ANIM-15).
+                    if (to.width > 0f && to.height > 0f && !last.draggedOut && !motion.reduced) {
                         transformOrigin = TransformOrigin(0f, 0f)
                         scaleX = lerp(from.width / to.width, 1f, p)
                         scaleY = lerp(from.height / to.height, 1f, p)

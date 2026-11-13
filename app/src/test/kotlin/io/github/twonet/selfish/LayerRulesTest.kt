@@ -78,6 +78,16 @@ class LayerRulesTest {
     }
 
     @Test
+    @Verifies("AR-04", "UI-08", "FR-ANIM-15")
+    fun `animation specs and easings are built only in the tokens`() {
+        val offenders = sources(appRoot)
+            .filterNot { it.relativePath.startsWith("ui/tokens/") }
+            .flatMap { source -> source.imports.filter { ANIMATION_SPECS.matches(it) }.map { "${source.relativePath}: $it" } }
+
+        assertEquals(emptyList(), offenders, "Use LauncherTheme.motion, so reduced motion reaches every animation")
+    }
+
+    @Test
     @Verifies("UI-06")
     fun `taps are handled only through pressable, which keeps targets at least 48 dp`() {
         val offenders = sources(appRoot)
@@ -164,6 +174,15 @@ class LayerRulesTest {
             // computed ones such as `alpha = 1f - progress` are fine.
             Regex("""\balpha\s*=\s*\d*\.?\d+f?\s*([,)};]|$)"""),
             Regex("""\.alpha\(\s*\d*\.?\d+f?\s*\)"""),
+        )
+
+        /**
+         * Animation specs and easing curves, which only `ui/tokens` builds,
+         * as `LauncherMotion` (AR-04, FR-ANIM-15). Matched as imports, since
+         * names such as `snap` are also used for other things.
+         */
+        val ANIMATION_SPECS = Regex(
+            """androidx\.compose\.animation\.core\.(tween|spring|snap|keyframes|keyframesWithSpline|repeatable|infiniteRepeatable|\w+Easing)""",
         )
 
         /** Every tap goes through `Modifier.pressable` (UI-06). */

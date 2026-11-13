@@ -77,6 +77,9 @@ class LauncherStore(
         ports.wallpaperScheduler.runs
             .onEach { awaitRestored(); dispatch(Action.ScheduledRunDue(it)) }
             .launchIn(scope)
+        ports.osSettings.animationsOff
+            .onEach { dispatch(Action.SystemAnimationsChanged(it)) }
+            .launchIn(scope)
         state.map { it.homeShown }
             .distinctUntilChanged()
             .flatMapLatest { shown -> if (shown) ports.osSettings.clock else emptyFlow() }
@@ -181,7 +184,7 @@ class LauncherStore(
     private suspend fun run(effect: Effect) {
         try {
             when (effect) {
-                is Effect.LaunchApp -> ports.appCatalog.launch(effect.app, effect.from)
+                is Effect.LaunchApp -> ports.appCatalog.launch(effect.app, effect.from, effect.animate)
                 is Effect.FinishRun -> effect.run.finished()
                 is Effect.OpenAppInfo -> ports.appCatalog.openAppInfo(effect.app)
                 is Effect.RequestUninstall -> ports.appCatalog.requestUninstall(effect.app)
@@ -190,7 +193,7 @@ class LauncherStore(
                 Effect.ResolveDefaultApps -> dispatch(Action.DefaultAppsResolved(defaultApps()))
                 is Effect.OpenScreen -> ports.appCatalog.open(effect.screen)
                 Effect.RequestNotificationAccess -> ports.notificationSource.requestAccess()
-                is Effect.OpenNotification -> notificationSource().open(effect.key, effect.from)
+                is Effect.OpenNotification -> notificationSource().open(effect.key, effect.from, effect.animate)
                 is Effect.DismissNotifications -> notificationSource().dismiss(effect.refs)
                 is Effect.DispatchAfter -> {
                     delay(effect.delay)

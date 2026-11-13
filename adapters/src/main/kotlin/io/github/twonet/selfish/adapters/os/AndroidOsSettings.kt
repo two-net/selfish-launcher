@@ -5,7 +5,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.database.ContentObserver
 import android.os.Build
+import android.provider.Settings
 import android.text.format.DateFormat
 import io.github.twonet.selfish.adapters.ForegroundActivity
 import io.github.twonet.selfish.domain.ports.ClockInfo
@@ -16,6 +18,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import java.time.Instant
@@ -24,8 +27,8 @@ import java.time.ZoneId
 /**
  * [OsSettings] over `Configuration.uiMode`, `Settings.Global`,
  * `ConnectivityManager`, `PowerManager`, the time broadcasts and `RoleManager`
- * (DESIGN §5.1). The Home role (#5) and the clock (#6) are real; the rest
- * reports neutral defaults until #13, #14 and #17.
+ * (DESIGN §5.1). The Home role (#5), the clock (#6) and the animator scale
+ * (#13) are real; the rest reports neutral defaults until #14 and #17.
  */
 class AndroidOsSettings(
     context: Context,
@@ -36,7 +39,29 @@ class AndroidOsSettings(
 
     override val systemDark: Flow<Boolean?> = flowOf(null)
 
-    override val animationsOff: Flow<Boolean> = flowOf(false)
+    /**
+     * Whether the system's animator duration scale is 0, the "remove
+     * animations" setting (FR-ANIM-15): the value now, then after every
+     * change of the setting. The observer is registered only while the flow
+     * is collected.
+     */
+    override val animationsOff: Flow<Boolean> = animatorScaleChanges().distinctUntilChanged().conflate()
+
+    private fun animatorScaleChanges(): Flow<Boolean> = callbackFlow {
+        val resolver = appContext.contentResolver
+        val observer = object : ContentObserver(null) {
+            override fun onChange(selfChange: Boolean) {
+                trySend(animatorScaleIsZero())
+            }
+        }
+        resolver.registerContentObserver(Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE), false, observer)
+        // After registering, so a change in between isn't missed.
+        trySend(animatorScaleIsZero())
+        awaitClose { resolver.unregisterContentObserver(observer) }
+    }
+
+    private fun animatorScaleIsZero(): Boolean =
+        Settings.Global.getFloat(appContext.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
 
     /**
      * The time now, then again on every minute and whenever the time, the

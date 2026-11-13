@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
 import io.github.twonet.selfish.ui.motion.Axis
 import io.github.twonet.selfish.ui.motion.GestureMath
+import io.github.twonet.selfish.ui.tokens.LauncherMotion
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
 import io.github.twonet.selfish.ui.tokens.Motion
 import io.github.twonet.selfish.ui.tokens.Sizes
@@ -77,6 +78,7 @@ fun PulleyMenu(
     val scope = rememberCoroutineScope()
     val pulley = remember(scope) { Pulley(scope) }
     val haptics = LocalHapticFeedback.current
+    val motion = LauncherTheme.motion
     val density = LocalDensity.current
     val header = LauncherTheme.type.header
     // Rows grow with the font scale, so a large label still fits its row.
@@ -86,6 +88,7 @@ fun PulleyMenu(
         pulley.item = rowPx
         pulley.atTop = atTop
         pulley.onTick = { haptics.performHapticFeedback(HapticFeedbackType.SegmentTick) }
+        pulley.motion = motion
     }
     val colors = LauncherTheme.colors
     val highlight = LauncherTheme.highlight
@@ -169,6 +172,7 @@ private class Pulley(private val scope: CoroutineScope) {
     var item = 1f
     var atTop: () -> Boolean = { false }
     var onTick: () -> Unit = {}
+    var motion = LauncherMotion()
 
     private val limit: Float get() = GestureMath.pulleyLimit(item, items.size)
 
@@ -208,7 +212,7 @@ private class Pulley(private val scope: CoroutineScope) {
 
     private fun end() {
         highlighted = null
-        scope.launch { drag.animateTo(0f, Motion.settle()) }
+        scope.launch { drag.animateTo(0f, motion.settle()) }
     }
 }
 

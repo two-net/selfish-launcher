@@ -1,5 +1,7 @@
 package io.github.twonet.selfish.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,6 +41,9 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.util.lerp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import io.github.twonet.selfish.R
 import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.Layer
@@ -57,10 +62,13 @@ import io.github.twonet.selfish.ui.motion.LayerGestureController
 import io.github.twonet.selfish.ui.motion.Scrolls
 import io.github.twonet.selfish.ui.motion.WindowBlur
 import io.github.twonet.selfish.ui.motion.layerGestures
+import io.github.twonet.selfish.ui.tokens.LauncherMotion
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
+import io.github.twonet.selfish.ui.tokens.Motion
 import io.github.twonet.selfish.ui.tokens.Spacing
 import io.github.twonet.selfish.ui.topmenu.TopMenu
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
 
 /**
  * Every launcher surface, rendered from [state]; every touch goes back as an
@@ -80,6 +88,11 @@ import kotlinx.coroutines.flow.filter
  * left to the system, so a pull from the top edge still opens the
  * notification shade (FR-GEST-04); tests pass their own. While a folder is
  * open, swipes are the folder's (FR-FOLD-07).
+ *
+ * When the launcher returns from an app, what is in view settles into place
+ * from slightly smaller and partly transparent (FR-ANIM-03). Under reduced
+ * motion every transition is instant or a short fade, and drags still
+ * follow the finger (FR-ANIM-15).
  */
 @Composable
 fun LauncherScreen(
@@ -95,11 +108,14 @@ fun LauncherScreen(
     val currentDispatch by rememberUpdatedState(dispatch)
     val minFling = LocalViewConfiguration.current.minimumFlingVelocity
     val endSide = if (LocalLayoutDirection.current == LayoutDirection.Ltr) 1f else -1f
+    val motion = LauncherTheme.motion
     SideEffect {
         controller.onSettled = { currentDispatch(Action.LayerSettled(it)) }
         controller.minFlingVelocity = minFling
         controller.endSide = endSide
+        controller.motion = motion
     }
+    val returning = rememberHomeReturn(motion)
 
     // The store changed the layer, for example on a Home press. A press that
     // brings the launcher back from another app arrives before its window
@@ -173,98 +189,102 @@ fun LauncherScreen(
                 .onUnhandledTap(closeMenu)
                 .testTag(LauncherTags.ROOT),
         ) {
-            HomeScreen(
-                state = state,
-                dispatch = dispatch,
-                coversState = covers,
-                modifier = Modifier
-                    .graphicsLayer {
-                        translationY = -controller.gridProgress * size.height
-                        translationX = GestureMath.homeShift(controller.sideways) * size.width
-                    }
-                    .then(
-                        if (open || eventsOpen || topMenuOpen) {
-                            Modifier.clearAndSetSemantics {}
-                        } else {
-                            // Screen-reader users open the grid, Events and the
-                            // Top Menu without swiping (FR-GEST-09).
-                            Modifier.semantics {
-                                customActions = listOf(
-                                    CustomAccessibilityAction(showApps) {
-                                        currentDispatch(Action.LayerSettled(Layer.AppGrid))
-                                        true
-                                    },
-                                    CustomAccessibilityAction(showEvents) {
-                                        currentDispatch(Action.LayerSettled(Layer.Events))
-                                        true
-                                    },
-                                    CustomAccessibilityAction(showTopMenu) {
-                                        currentDispatch(Action.LayerSettled(Layer.TopMenu))
-                                        true
-                                    },
-                                )
-                            }
-                        },
-                    ),
-            )
-            if (othersNeeded || !eventsClosed) {
-                EventsScreen(
+            // Inside the root, which never moves, so swipes are still
+            // measured against the screen while this settles (FR-ANIM-03).
+            Box(Modifier.fillMaxSize().homeReturn(returning, motion)) {
+                HomeScreen(
                     state = state,
                     dispatch = dispatch,
-                    claims = controller.claims,
-                    listState = events,
+                    coversState = covers,
                     modifier = Modifier
-                        .graphicsLayer { translationX = GestureMath.eventsShift(controller.sideways) * size.width }
+                        .graphicsLayer {
+                            translationY = -controller.gridProgress * size.height
+                            translationX = GestureMath.homeShift(controller.sideways) * size.width
+                        }
                         .then(
-                            if (eventsOpen) {
-                                // And return to Home the same way (FR-GEST-09).
+                            if (open || eventsOpen || topMenuOpen) {
+                                Modifier.clearAndSetSemantics {}
+                            } else {
+                                // Screen-reader users open the grid, Events and the
+                                // Top Menu without swiping (FR-GEST-09).
                                 Modifier.semantics {
                                     customActions = listOf(
-                                        CustomAccessibilityAction(showHome) {
-                                            currentDispatch(Action.LayerSettled(Layer.Home))
+                                        CustomAccessibilityAction(showApps) {
+                                            currentDispatch(Action.LayerSettled(Layer.AppGrid))
+                                            true
+                                        },
+                                        CustomAccessibilityAction(showEvents) {
+                                            currentDispatch(Action.LayerSettled(Layer.Events))
+                                            true
+                                        },
+                                        CustomAccessibilityAction(showTopMenu) {
+                                            currentDispatch(Action.LayerSettled(Layer.TopMenu))
                                             true
                                         },
                                     )
                                 }
-                            } else {
-                                Modifier.clearAndSetSemantics {}
                             },
                         ),
                 )
-            }
-            if (othersNeeded || !closed) {
-                AppGrid(
-                    state = state,
-                    dispatch = dispatch,
-                    gridState = grid,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { translationY = (1f - controller.gridProgress) * size.height }
-                        .then(if (closed) Modifier.clearAndSetSemantics {} else Modifier),
-                )
-            }
-            if (othersNeeded || !topMenuClosed) {
-                TopMenu(
-                    state = state,
-                    dispatch = dispatch,
-                    progress = topMenuProgress,
-                    catchesTouches = !topMenuClosed,
-                    onHeight = topMenuHeight,
-                    scrollState = topMenu,
-                    modifier = if (topMenuOpen) {
-                        // And close it the same way (FR-GEST-09).
-                        Modifier.semantics {
-                            customActions = listOf(
-                                CustomAccessibilityAction(showHome) {
-                                    currentDispatch(Action.LayerSettled(Layer.Home))
-                                    true
+                if (othersNeeded || !eventsClosed) {
+                    EventsScreen(
+                        state = state,
+                        dispatch = dispatch,
+                        claims = controller.claims,
+                        listState = events,
+                        modifier = Modifier
+                            .graphicsLayer { translationX = GestureMath.eventsShift(controller.sideways) * size.width }
+                            .then(
+                                if (eventsOpen) {
+                                    // And return to Home the same way (FR-GEST-09).
+                                    Modifier.semantics {
+                                        customActions = listOf(
+                                            CustomAccessibilityAction(showHome) {
+                                                currentDispatch(Action.LayerSettled(Layer.Home))
+                                                true
+                                            },
+                                        )
+                                    }
+                                } else {
+                                    Modifier.clearAndSetSemantics {}
                                 },
-                            )
-                        }
-                    } else {
-                        Modifier.clearAndSetSemantics {}
-                    },
-                )
+                            ),
+                    )
+                }
+                if (othersNeeded || !closed) {
+                    AppGrid(
+                        state = state,
+                        dispatch = dispatch,
+                        gridState = grid,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { translationY = (1f - controller.gridProgress) * size.height }
+                            .then(if (closed) Modifier.clearAndSetSemantics {} else Modifier),
+                    )
+                }
+                if (othersNeeded || !topMenuClosed) {
+                    TopMenu(
+                        state = state,
+                        dispatch = dispatch,
+                        progress = topMenuProgress,
+                        catchesTouches = !topMenuClosed,
+                        onHeight = topMenuHeight,
+                        scrollState = topMenu,
+                        modifier = if (topMenuOpen) {
+                            // And close it the same way (FR-GEST-09).
+                            Modifier.semantics {
+                                customActions = listOf(
+                                    CustomAccessibilityAction(showHome) {
+                                        currentDispatch(Action.LayerSettled(Layer.Home))
+                                        true
+                                    },
+                                )
+                            }
+                        } else {
+                            Modifier.clearAndSetSemantics {}
+                        },
+                    )
+                }
             }
             val remorse = state.remorse
             if (remorse != null) {
@@ -286,6 +306,52 @@ fun LauncherScreen(
                 )
             }
         }
+    }
+}
+
+/**
+ * How far the launcher has settled back into place since it last returned
+ * from another app, from 0 to 1 (FR-ANIM-03). It is 1 on the first start,
+ * which has nothing to return from. The store can't tell: it stops being
+ * collected before the launcher is hidden, so this follows the lifecycle,
+ * as the search field does.
+ */
+@Composable
+private fun rememberHomeReturn(motion: LauncherMotion): Animatable<Float, AnimationVector1D> {
+    val returning = remember { Animatable(1f) }
+    val away = remember { Away() }
+    val scope = rememberCoroutineScope()
+    val currentMotion by rememberUpdatedState(motion)
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { away.value = true }
+    LifecycleEventEffect(Lifecycle.Event.ON_START) {
+        if (away.value) {
+            away.value = false
+            scope.launch {
+                returning.snapTo(0f)
+                returning.animateTo(1f, currentMotion.homeReturn())
+            }
+        }
+    }
+    return returning
+}
+
+/** Whether the launcher has been hidden since it last returned. Not state: it never redraws anything. */
+private class Away {
+    var value = false
+}
+
+/**
+ * Draws the launcher's views at [returning]: from [Motion.HOME_RETURN_SCALE]
+ * and [Motion.HOME_RETURN_ALPHA] to full size and opacity (FR-ANIM-03).
+ * Under reduced motion they only fade in (FR-ANIM-15).
+ */
+private fun Modifier.homeReturn(returning: Animatable<Float, AnimationVector1D>, motion: LauncherMotion): Modifier = graphicsLayer {
+    val settled = returning.value
+    if (settled < 1f) {
+        val scale = if (motion.reduced) 1f else lerp(Motion.HOME_RETURN_SCALE, 1f, settled)
+        scaleX = scale
+        scaleY = scale
+        alpha = lerp(Motion.HOME_RETURN_ALPHA, 1f, settled)
     }
 }
 

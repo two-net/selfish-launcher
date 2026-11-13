@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalViewConfiguration
 import io.github.twonet.selfish.ui.motion.Axis
 import io.github.twonet.selfish.ui.motion.GestureMath
 import io.github.twonet.selfish.ui.motion.SidewaysClaims
+import io.github.twonet.selfish.ui.tokens.LauncherTheme
 import io.github.twonet.selfish.ui.tokens.Motion
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
@@ -54,6 +55,7 @@ fun SwipeToDismiss(
     val owner = remember { Any() }
     val minFling = LocalViewConfiguration.current.minimumFlingVelocity
     val currentDismiss by rememberUpdatedState(onDismiss)
+    val motion by rememberUpdatedState(LauncherTheme.motion)
     DisposableEffect(claims, enabled) {
         onDispose { claims.release(owner) }
     }
@@ -118,10 +120,10 @@ fun SwipeToDismiss(
                     val gone = side != 0f && GestureMath.shouldComplete(abs(at) / width, speed * side, minFling)
                     scope.launch {
                         if (gone) {
-                            offset.animateTo(side * width, Motion.settle(), initialVelocity = speed)
+                            offset.animateTo(side * width, motion.settle(), initialVelocity = speed)
                             currentDismiss()
                         } else {
-                            offset.animateTo(0f, Motion.settle(), initialVelocity = speed)
+                            offset.animateTo(0f, motion.settle(), initialVelocity = speed)
                         }
                     }
                 }

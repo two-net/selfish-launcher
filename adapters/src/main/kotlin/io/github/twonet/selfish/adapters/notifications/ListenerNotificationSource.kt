@@ -21,6 +21,7 @@ import android.service.notification.NotificationListenerService.Ranking
 import android.service.notification.NotificationListenerService.RankingMap
 import android.service.notification.StatusBarNotification
 import io.github.twonet.selfish.adapters.ForegroundActivity
+import io.github.twonet.selfish.adapters.withoutAnimation
 import io.github.twonet.selfish.domain.model.Bounds
 import io.github.twonet.selfish.domain.ports.NotificationItem
 import io.github.twonet.selfish.domain.ports.NotificationRef
@@ -112,13 +113,14 @@ class ListenerNotificationSource internal constructor(
      * opened instead. As the system's shade does, an auto-cancelling
      * notification is then dismissed.
      */
-    override suspend fun open(key: String, from: Bounds?) = withContext(Dispatchers.Main) {
+    override suspend fun open(key: String, from: Bounds?, animate: Boolean) = withContext(Dispatchers.Main) {
         val listener = connected.value ?: return@withContext
         val sbn = active(listener, arrayOf(key))?.firstOrNull() ?: return@withContext
         val notification = sbn.notification
         val bounds = from?.let { Rect(it.left, it.top, it.right, it.bottom) }?.takeUnless { it.isEmpty }
-        val sent = notification.contentIntent?.let { send(it, bounds) } ?: false
-        if (!sent) launchApp(sbn, bounds)
+        val options = if (animate) growFrom(bounds) else withoutAnimation(appContext)
+        val sent = notification.contentIntent?.let { send(it, options) } ?: false
+        if (!sent) launchApp(sbn, bounds, options)
         val flags = notification.flags
         if (flags and Notification.FLAG_AUTO_CANCEL != 0 && flags and Notification.FLAG_FOREGROUND_SERVICE == 0) {
             listener.cancelNotification(key)
@@ -206,8 +208,8 @@ class ListenerNotificationSource internal constructor(
         }
     }
 
-    private fun send(intent: PendingIntent, bounds: Rect?): Boolean {
-        val options = growFrom(bounds) ?: ActivityOptions.makeBasic()
+    private fun send(intent: PendingIntent, animation: ActivityOptions?): Boolean {
+        val options = animation ?: ActivityOptions.makeBasic()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
             options.setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE)
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -222,9 +224,9 @@ class ListenerNotificationSource internal constructor(
         }
     }
 
-    private fun launchApp(sbn: StatusBarNotification, bounds: Rect?) {
+    private fun launchApp(sbn: StatusBarNotification, bounds: Rect?, options: ActivityOptions?) {
         val activity = launcherApps.getActivityList(sbn.packageName, sbn.user).firstOrNull() ?: return
-        launcherApps.startMainActivity(activity.componentName, sbn.user, bounds, growFrom(bounds)?.toBundle())
+        launcherApps.startMainActivity(activity.componentName, sbn.user, bounds, options?.toBundle())
     }
 
     /** Options that grow the opened window from [bounds] (FR-ANIM-02), or `null` without a visible launcher. */

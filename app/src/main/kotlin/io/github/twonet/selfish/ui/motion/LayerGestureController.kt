@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Velocity
 import io.github.twonet.selfish.domain.state.Layer
-import io.github.twonet.selfish.ui.tokens.Motion
+import io.github.twonet.selfish.ui.tokens.LauncherMotion
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
@@ -55,6 +55,12 @@ class LayerGestureController(private val scope: CoroutineScope) {
 
     /** The platform's minimum fling velocity, in pixels per second. */
     var minFlingVelocity: Float = 0f
+
+    /**
+     * How transitions settle: with the release spring, or at once under
+     * reduced motion (FR-ANIM-15). Drags follow the finger either way.
+     */
+    var motion: LauncherMotion = LauncherMotion()
 
     /**
      * The side Events comes in from when it is opened without a finger, for
@@ -161,7 +167,7 @@ class LayerGestureController(private val scope: CoroutineScope) {
         val layer = layerAt(track, next)
         if (layer != layerAt(track, origin)) onSettled(layer)
         scope.launch {
-            animatable(track).animateTo(next, Motion.settle(), initialVelocity = velocity / travel(track))
+            animatable(track).animateTo(next, motion.settle(), initialVelocity = velocity / travel(track))
             settled(track)
         }
     }
@@ -188,7 +194,7 @@ class LayerGestureController(private val scope: CoroutineScope) {
         setGoal(track, target)
         if (dragging == track) dragging = null
         scope.launch {
-            if (animate) animatable(track).animateTo(target, Motion.settle()) else animatable(track).snapTo(target)
+            if (animate) animatable(track).animateTo(target, motion.settle()) else animatable(track).snapTo(target)
             settled(track)
         }
     }

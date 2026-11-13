@@ -28,6 +28,7 @@ import android.os.UserManager
 import android.provider.MediaStore
 import android.provider.Settings
 import io.github.twonet.selfish.adapters.ForegroundActivity
+import io.github.twonet.selfish.adapters.withoutAnimation
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.AppId
 import io.github.twonet.selfish.domain.model.Bounds
@@ -229,12 +230,13 @@ class LauncherAppsCatalog internal constructor(
         return layer.takeIf { it.isNotEmpty() }
     }
 
-    override suspend fun launch(app: AppId, from: Bounds?) {
+    override suspend fun launch(app: AppId, from: Bounds?, animate: Boolean) {
         val user = userManager.getUserForSerialNumber(app.userSerial) ?: return
         val component = ComponentName(app.packageName, app.activityName)
         val bounds = from?.let { Rect(it.left, it.top, it.right, it.bottom) }
         withContext(Dispatchers.Main) {
-            launcherApps.startMainActivity(component, user, bounds, growFrom(bounds))
+            val options = if (animate) growFrom(bounds) else withoutAnimation(appContext).toBundle()
+            launcherApps.startMainActivity(component, user, bounds, options)
         }
     }
 

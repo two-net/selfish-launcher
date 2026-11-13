@@ -181,6 +181,16 @@ class EventsReducerTest {
     }
 
     @Test
+    @Verifies("FR-ANIM-15")
+    fun `under reduced motion a notification opens without growing from its row`() {
+        val bounds = Bounds(1, 2, 3, 4)
+
+        val next = reduce(on(a).copy(systemAnimationsOff = true), Action.OpenNotification("a", bounds))
+
+        assertEquals(Effect.OpenNotification("a", bounds, animate = false), next.effects.first())
+    }
+
+    @Test
     @Verifies("FR-EVT-05")
     fun `a dismissed notification leaves at once and stays away until the system reports it gone`() {
         val next = reduce(on(a, b), Action.DismissNotification("a"))

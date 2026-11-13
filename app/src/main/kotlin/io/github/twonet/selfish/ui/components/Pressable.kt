@@ -14,8 +14,9 @@ import io.github.twonet.selfish.ui.tokens.Sizes
 /**
  * Makes an element respond to taps and long-presses. It is the only way the
  * launcher handles them (`LayerRulesTest`), so every touch target is at least
- * [Sizes.MinTouchTarget] on each side (UI-06), and the pressed glow
- * (FR-ANIM-04, #13) reaches every element through `LocalIndication`.
+ * [Sizes.MinTouchTarget] on each side (UI-06), and every element glows in
+ * the highlight color from the first frame of a press ([pressGlow],
+ * FR-ANIM-04). The clickable draws no indication of its own.
  *
  * With [liftDrag], a long-press lifts the element instead of calling
  * [onLongClick], and the same touch can then drag it (FR-HOME-06,
@@ -38,7 +39,10 @@ fun Modifier.pressable(
 ): Modifier {
     val clickable = this
         .sizeIn(minWidth = Sizes.MinTouchTarget, minHeight = Sizes.MinTouchTarget)
+        .pressGlow()
         .combinedClickable(
+            interactionSource = null,
+            indication = null,
             onClickLabel = onClickLabel,
             role = role,
             onLongClickLabel = onLongClickLabel,

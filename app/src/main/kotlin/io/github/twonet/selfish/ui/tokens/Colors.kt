@@ -10,7 +10,7 @@ import androidx.compose.ui.graphics.Color
  * backdrop over pure white and pure black wallpapers (NFR-A11Y-03).
  */
 @Immutable
-class LauncherColors(
+data class LauncherColors(
     /** Body text, labels and icons at primary emphasis (UI-04). */
     val textPrimary: Color,
     /** Text at secondary emphasis; still 4.5:1 on every backdrop (UI-04). */
@@ -39,6 +39,13 @@ class LauncherColors(
  * timer, so it shows what is about to go (FR-FOLD-07, FR-ANIM-12).
  */
 const val PENDING_ALPHA = 0.4f
+
+/**
+ * How opaque a pressed item's glow is at its center, in the highlight color
+ * (FR-ANIM-04). Drawn over the item, so it stays light enough not to hide
+ * the icon and text beneath it.
+ */
+const val PRESS_GLOW_ALPHA = 0.35f
 
 /** Light: dark text on light glass. */
 val LightColors = LauncherColors(

@@ -20,12 +20,15 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.twonet.selfish.R
 import io.github.twonet.selfish.domain.Verifies
+import io.github.twonet.selfish.domain.model.Animations
 import io.github.twonet.selfish.domain.state.Action
+import io.github.twonet.selfish.domain.state.LauncherState
 import io.github.twonet.selfish.domain.state.Layer
 import io.github.twonet.selfish.ui.TestLauncher.Companion.app
 import io.github.twonet.selfish.ui.TestLauncher.Companion.launcher
 import io.github.twonet.selfish.ui.grid.AppGridTags
 import io.github.twonet.selfish.ui.home.HomeTags
+import io.github.twonet.selfish.ui.tokens.Motion
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -212,6 +215,43 @@ class NavigationTest {
 
         assertEquals(Layer.AppGrid, launcher.state.layer)
         rule.onNode(gridApp("App 01")).assertIsDisplayed()
+    }
+
+    @Test
+    @Verifies("FR-ANIM-15", "NFR-A11Y-05", "AC-09", "FR-GEST-01")
+    fun withTheSystemsAnimationsRemovedDragsFollowTheFingerAndViewsChangeAtOnce() =
+        dragsFollowAndViewsChangeAtOnce(launcher(apps, home = apps.take(1)).copy(systemAnimationsOff = true))
+
+    @Test
+    @Verifies("FR-ANIM-15", "NFR-A11Y-05")
+    fun withAnimationsReducedDragsFollowTheFingerAndViewsChangeAtOnce() =
+        dragsFollowAndViewsChangeAtOnce(launcher(apps, home = apps.take(1)).let { it.copy(settings = it.settings.copy(animations = Animations.Reduced)) })
+
+    /**
+     * Under reduced motion (AC-09): the App Grid follows the finger as before,
+     * and once released it is open within 100 ms; Back closes it as fast.
+     */
+    private fun dragsFollowAndViewsChangeAtOnce(state: LauncherState) {
+        launcher.show(state)
+        val screen = root().fetchSemanticsNode().boundsInRoot
+        rule.mainClock.autoAdvance = false
+
+        root().performTouchInput {
+            down(center)
+            repeat(10) { moveBy(Offset(0f, -height * 0.04f)) }
+        }
+        rule.mainClock.advanceTimeByFrame()
+        val following = rule.onNodeWithTag(AppGridTags.GRID).fetchSemanticsNode().boundsInRoot.top
+        assertEquals(screen.height * 0.6f, following, screen.height * 0.01f, "40% open, under the finger")
+
+        root().performTouchInput { up() }
+        rule.mainClock.advanceTimeBy(Motion.REDUCED_MILLIS.toLong())
+        assertEquals(Layer.AppGrid, launcher.state.layer)
+        assertEquals(0f, rule.onNodeWithTag(AppGridTags.GRID).fetchSemanticsNode().boundsInRoot.top, "Open within 100 ms")
+
+        launcher.dispatch(Action.Back)
+        rule.mainClock.advanceTimeBy(Motion.REDUCED_MILLIS.toLong())
+        assertEquals(0f, rule.onNodeWithTag(HomeTags.SCREEN).fetchSemanticsNode().boundsInRoot.top, "Home is back within 100 ms")
     }
 
     private companion object {

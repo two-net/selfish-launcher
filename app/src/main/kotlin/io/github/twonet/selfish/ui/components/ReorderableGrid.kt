@@ -45,6 +45,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.toOffset
 import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.zIndex
+import io.github.twonet.selfish.ui.tokens.LauncherMotion
+import io.github.twonet.selfish.ui.tokens.LauncherTheme
 import io.github.twonet.selfish.ui.tokens.Motion
 import io.github.twonet.selfish.ui.tokens.Shapes
 import io.github.twonet.selfish.ui.tokens.Sizes
@@ -94,9 +96,11 @@ import kotlinx.coroutines.launch
  * the App Grid's search field. [key] must be unique and stable, and the same
  * for the same thing in two grids that hand drags to each other.
  *
- * When [items] change, items fade in and out with [itemFade] and move to
- * their new slots with [itemPlacement]: [Motion.reflow] by default, and
- * [Motion.results] for search results (FR-SRCH-01).
+ * When [items] change, items fade in with [itemFadeIn], out with
+ * [itemFadeOut], and move to their new slots with [itemPlacement]
+ * (FR-ANIM-05): [LauncherMotion.reflow] and its fades by default, and
+ * [LauncherMotion.results] and its fades for search results (FR-SRCH-01).
+ * All of them are instant or short fades under reduced motion (FR-ANIM-15).
  */
 @Composable
 fun <T> ReorderableGrid(
@@ -118,8 +122,9 @@ fun <T> ReorderableGrid(
     handoff: DragHandoff? = null,
     onHandOff: ((item: T, centerInWindow: Offset) -> Unit)? = null,
     handOffOutside: () -> Rect = { Rect.Zero },
-    itemFade: FiniteAnimationSpec<Float> = Motion.reflow(),
-    itemPlacement: FiniteAnimationSpec<IntOffset> = Motion.reflow(),
+    itemFadeIn: FiniteAnimationSpec<Float> = LauncherTheme.motion.fadeIn(),
+    itemFadeOut: FiniteAnimationSpec<Float> = LauncherTheme.motion.fadeOut(),
+    itemPlacement: FiniteAnimationSpec<IntOffset> = LauncherTheme.motion.reflow(),
     itemContent: @Composable (item: T, liftDrag: LiftDrag) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -129,6 +134,7 @@ fun <T> ReorderableGrid(
     val density = LocalDensity.current
     val direction = LocalLayoutDirection.current
     val haptics = LocalHapticFeedback.current
+    val motion = LauncherTheme.motion
     // Slots are measured from the end of the top and start padding.
     val padding = with(density) {
         Offset(contentPadding.calculateStartPadding(direction).toPx(), contentPadding.calculateTopPadding().toPx())
@@ -141,6 +147,7 @@ fun <T> ReorderableGrid(
         drag.speed = with(density) { Sizes.AutoScrollSpeed.toPx() }
         drag.padding = padding
         drag.handoff = handoff
+        drag.motion = motion
         drag.handOffOutside = if (onHandOff != null) handOffOutside else null
         val byKey = { k: String -> items.firstOrNull { key(it) == k } }
         drag.onHandOff = { k, at -> byKey(k)?.let { onHandOff?.invoke(it, at) } }
@@ -212,7 +219,7 @@ fun <T> ReorderableGrid(
         ) { entry ->
             when (entry) {
                 is GridEntry.Menu -> Box(
-                    Modifier.animateItem(fadeInSpec = Motion.reflow(), placementSpec = Motion.reflow(), fadeOutSpec = Motion.reflow()),
+                    Modifier.animateItem(fadeInSpec = motion.fadeIn(), placementSpec = motion.reflow(), fadeOutSpec = motion.fadeOut()),
                 ) { menu(entry.item) }
 
                 is GridEntry.Item -> {
@@ -221,7 +228,7 @@ fun <T> ReorderableGrid(
                     val lifted = itemKey == drag.dragged || itemKey == menuKey || itemKey == drag.dropTarget
                     // Handed to another grid, which draws it now.
                     val gone = itemKey == drag.handedOff
-                    val scale by animateFloatAsState(if (lifted) Motion.LIFT_SCALE else 1f, Motion.reflow(), label = "lift")
+                    val scale by animateFloatAsState(if (lifted) Motion.LIFT_SCALE else 1f, motion.reflow(), label = "lift")
                     if (itemKey == drag.dragged) {
                         // Stays composed while auto-scrolling carries its slot out of view.
                         val pinnable = LocalPinnableContainer.current
@@ -235,9 +242,9 @@ fun <T> ReorderableGrid(
                             .zIndex(if (moving) 1f else 0f)
                             // The dragged item follows the finger, not its slot.
                             .animateItem(
-                                fadeInSpec = itemFade,
+                                fadeInSpec = itemFadeIn,
                                 placementSpec = if (moving) null else itemPlacement,
-                                fadeOutSpec = itemFade,
+                                fadeOutSpec = itemFadeOut,
                             )
                             .graphicsLayer {
                                 if (itemKey == drag.dragged) drag.draggedScale = scale
@@ -408,6 +415,9 @@ private class GridDrag(private val gridState: LazyGridState, private val scope: 
     /** The content padding at the top and start, where slots are measured from. */
     var padding = Offset.Zero
     var handoff: DragHandoff? = null
+
+    /** How a dropped item settles into place: instant under reduced motion (FR-ANIM-15). */
+    var motion = LauncherMotion()
 
     /** Where the dragged item may go before it is handed off; `null` when this grid never hands off. */
     var handOffOutside: (() -> Rect)? = null
@@ -700,10 +710,10 @@ private class GridDrag(private val gridState: LazyGridState, private val scope: 
             scope.launch {
                 settle.snapTo(visual)
                 settleFrom = null
-                settle.animateTo(into, Motion.reflow())
+                settle.animateTo(into, motion.reflow())
                 // The store took the drop and the item is gone; if it is
                 // still here, the drop was refused, so it goes back.
-                if (key in keys) settle.animateTo(Offset.Zero, Motion.reflow())
+                if (key in keys) settle.animateTo(Offset.Zero, motion.reflow())
                 if (settling == key) settling = null
             }
             // The transient order stays until the store's arrives.
@@ -713,7 +723,7 @@ private class GridDrag(private val gridState: LazyGridState, private val scope: 
         scope.launch {
             settle.snapTo(visual)
             settleFrom = null
-            settle.animateTo(Offset.Zero, Motion.reflow())
+            settle.animateTo(Offset.Zero, motion.reflow())
             if (settling == key) settling = null
         }
         // The transient order stays until the store's order arrives, so the

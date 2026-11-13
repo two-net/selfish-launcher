@@ -7,7 +7,7 @@ issues add their items here. Every release PR signs off the whole list.
 ## Architecture (SRS §7)
 
 - [ ] [AR-02] One store: all launcher state lives in `LauncherStore` in `:domain`; views hold only transient UI state (drag progress, scroll positions, running animations).
-- [ ] [AR-04, UI-08] One gesture-and-motion component (`ui/motion/LayerGestureController`) and one token set (`ui/tokens/`) serve every view. `LayerRulesTest` catches literal colors, sizes, radii, alphas and durations; this item covers what it can't, such as copied easing curves or a token used for something it wasn't meant for.
+- [ ] [AR-04, UI-08] One gesture-and-motion component (`ui/motion/LayerGestureController`) and one token set (`ui/tokens/`) serve every view. `LayerRulesTest` catches literal colors, sizes, radii, alphas and durations, and animation specs or easing curves built outside the tokens; this item covers what it can't, such as a token used for something it wasn't meant for, or an animation left on Compose's default spec.
 - [ ] [AR-05] No server, accounts, plugin or extension system, or remote configuration.
 - [ ] [AR-06] The merged manifest declares exactly one `JobService`, `WallpaperJobService`, and nothing else runs in the background.
 - [ ] [AR-08] Every component on the release runtime classpath is justified in DESIGN §7, and `gradle/runtime-dependencies.txt` changed in the same PR as §7.
@@ -68,6 +68,15 @@ issues add their items here. Every release PR signs off the whole list.
 - [ ] [FR-GEST-07, FR-GEST-08] On a device, long-pressing a cover, an app, a folder, an app in a folder, a search result and an empty part of Home each ticks once, as it lifts or its menu opens. With Touch & hold delay set to Long in the system's accessibility settings, each waits that long. With the system's touch feedback off, nothing ticks.
 - [ ] [FR-GEST-05, NFR-A11Y-06] The bar that shows a pulley menu is there, on Events and on an open folder, is visible but quiet over a bright and a dark wallpaper in both appearances, and fades as the menu is pulled. Each tick comes with the next item lighting up.
 - [ ] [AC-10, FR-GEST-09, NFR-A11Y-02] With TalkBack and no swipes: open the App Grid, Events and the Top Menu from Home's actions, launch an app, choose "Clear notifications" from the Events header's actions, and cancel it from the banner, which TalkBack announces as it appears.
+
+## Animation (SRS §4.9)
+
+- [ ] [FR-ANIM-03] On a device, returning to the launcher with Back from an app, with Home, and from the recents screen: what is in view (Home, or the open App Grid) settles from slightly smaller and partly transparent to full over the Medium duration, as it does after unlocking the screen; the launcher's first start doesn't. Checked with a screen recording.
+- [ ] [FR-ANIM-04] Pressing a cover, an app, a folder, an app in a folder, a search result, a menu item, a Top Menu option and the remorse banner glows in the highlight color from the first frame, also in the middle of the scrolling App Grid, and fades over the Short duration after release; starting to scroll or swipe instead fades it at once. Checked over a bright and a dark wallpaper, with a screen recording.
+- [ ] [FR-ANIM-05, FR-ANIM-07, FR-ANIM-08] In screen recordings, things arriving or settling decelerate into place (reflow, a folder opening, a menu opening) and things leaving accelerate away (a folder closing, a menu closing, items fading out).
+- [ ] [FR-ANIM-09] Releasing a pulley menu on an item flashes it in the highlight color for the Short duration before it runs, on Events and in a folder. Checked with a screen recording.
+- [ ] [FR-ANIM-13] With no covers, Home's "Swipe up to see your apps" has a glowing point above it that traces a swipe up three times each time Home comes on screen, and then rests; with reduced motion it stays still.
+- [ ] [AC-09, FR-ANIM-15, NFR-A11Y-05] On a device with "Remove animations" on in the accessibility settings: opening and closing the App Grid, Events and the Top Menu, a folder and a context menu, launching an app and returning are all instant or quick fades, and drags still follow the finger; turning it off brings the animations back without restarting the launcher. The launcher's own Animations switch arrives with Settings (#18).
 
 ## User interface (SRS §5.1)
 

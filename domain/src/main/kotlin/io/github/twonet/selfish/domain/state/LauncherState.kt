@@ -4,6 +4,7 @@ import io.github.twonet.selfish.domain.events.NotificationGroup
 import io.github.twonet.selfish.domain.events.NotificationGroups
 import io.github.twonet.selfish.domain.layout.LayoutRules
 import io.github.twonet.selfish.domain.model.AppEntry
+import io.github.twonet.selfish.domain.model.Animations
 import io.github.twonet.selfish.domain.model.FolderId
 import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Layout
@@ -124,6 +125,11 @@ data class LauncherState(
      * back for a moment (FR-EVT-05).
      */
     val dismissing: Set<NotificationRef> = emptySet(),
+    /**
+     * Whether the system's "remove animations" setting is on: its animator
+     * duration scale is 0 (FR-ANIM-15). Followed from the OS, never saved.
+     */
+    val systemAnimationsOff: Boolean = false,
 )
 
 /**
@@ -219,6 +225,14 @@ val LauncherState.showsAccessCard: Boolean
  */
 val LauncherState.showsAmbiences: Boolean
     get() = settings.dailyWallpaper && wallpapers.isNotEmpty()
+
+/**
+ * Whether transitions are instant or fades of at most 100 ms: the system's
+ * animations are removed, or the launcher's Animations setting is Reduced
+ * (FR-ANIM-15, NFR-A11Y-05). Drags still follow the finger.
+ */
+val LauncherState.reducedMotion: Boolean
+    get() = systemAnimationsOff || settings.animations == Animations.Reduced
 
 /** The notifications whose clearing is waiting for its remorse timer, if any (FR-EVT-06). */
 val LauncherState.pendingClear: Set<NotificationRef>

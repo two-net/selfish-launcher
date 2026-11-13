@@ -52,6 +52,9 @@ sealed interface Action {
     /** The time, time zone or 12/24-hour setting changed while the launcher is shown (FR-HOME-02). */
     data class ClockChanged(val clock: ClockInfo) : Action
 
+    /** The system's "remove animations" setting is now [off], or not (FR-ANIM-15). */
+    data class SystemAnimationsChanged(val off: Boolean) : Action
+
     /** The user long-pressed [target]; its menu replaces any open one (FR-HOME-06, FR-GRID-06). */
     data class OpenContextMenu(val target: MenuTarget) : Action
 

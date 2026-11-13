@@ -33,8 +33,12 @@ interface NotificationSource {
      */
     suspend fun requestAccess()
 
-    /** Opens what the notification [key] points to, growing from [from] when given (FR-EVT-04). */
-    suspend fun open(key: String, from: Bounds?)
+    /**
+     * Opens what the notification [key] points to (FR-EVT-04): growing from
+     * [from] when given and [animate], and with no window animation when not
+     * [animate] (FR-ANIM-15).
+     */
+    suspend fun open(key: String, from: Bounds?, animate: Boolean)
 
     /**
      * Dismisses each of [refs] that can be dismissed and hasn't changed
@@ -48,7 +52,7 @@ interface NotificationSource {
         override val granted: Flow<Boolean> = flowOf(false)
         override val notifications: Flow<List<NotificationItem>> = emptyFlow()
         override suspend fun requestAccess() = Unit
-        override suspend fun open(key: String, from: Bounds?) = Unit
+        override suspend fun open(key: String, from: Bounds?, animate: Boolean) = Unit
         override suspend fun dismiss(refs: Set<NotificationRef>) = Unit
     }
 }

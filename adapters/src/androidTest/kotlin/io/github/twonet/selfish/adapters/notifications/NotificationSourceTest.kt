@@ -214,7 +214,7 @@ class NotificationSourceTest {
             }
             val item = awaitOwn { it.size == 1 }.single()
 
-            source.open(item.key, null)
+            source.open(item.key, null, animate = true)
 
             assertNotNull(withTimeoutOrNull(TIMEOUT) { received.await() }, "The content intent was sent")
             assertNotNull(withTimeoutOrNull(TIMEOUT) { ownNotifications.first { it.isEmpty() } }, "Opening it cancelled it")

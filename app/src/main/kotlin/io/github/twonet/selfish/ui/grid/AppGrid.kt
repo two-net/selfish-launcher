@@ -65,7 +65,7 @@ import io.github.twonet.selfish.ui.folder.FolderPanel
 import io.github.twonet.selfish.ui.search.SearchField
 import io.github.twonet.selfish.ui.tokens.Emphasis
 import io.github.twonet.selfish.ui.tokens.LARGE_FONT_SCALE
-import io.github.twonet.selfish.ui.tokens.Motion
+import io.github.twonet.selfish.ui.tokens.LauncherTheme
 import io.github.twonet.selfish.ui.tokens.PENDING_ALPHA
 import io.github.twonet.selfish.ui.tokens.Spacing
 import io.github.twonet.selfish.ui.tokens.TextRole
@@ -114,6 +114,7 @@ fun AppGrid(state: LauncherState, dispatch: (Action) -> Unit, gridState: LazyGri
     val handoff = remember { DragHandoff() }
     // Where each folder's icon was last seen, for its panel to grow from (FR-ANIM-07).
     val tiles = remember { HashMap<FolderId, Rect>() }
+    val motion = LauncherTheme.motion
 
     Box(modifier) {
         ReorderableGrid(
@@ -160,8 +161,9 @@ fun AppGrid(state: LauncherState, dispatch: (Action) -> Unit, gridState: LazyGri
             contentPadding = padding,
             gridState = gridState,
             handoff = handoff,
-            itemFade = if (searching) Motion.results() else Motion.reflow(),
-            itemPlacement = if (searching) Motion.results() else Motion.reflow(),
+            itemFadeIn = if (searching) motion.resultsFadeIn() else motion.fadeIn(),
+            itemFadeOut = if (searching) motion.resultsFadeOut() else motion.fadeOut(),
+            itemPlacement = if (searching) motion.results() else motion.reflow(),
         ) { cell, liftDrag ->
             when (cell) {
                 is GridCell.App -> AppTile(cell.entry, labelLines, if (searching) null else liftDrag, dispatch)
@@ -246,7 +248,13 @@ private fun FolderTile(
     onIconBounds: (Rect) -> Unit,
 ) {
     val description = pluralStringResource(R.plurals.folder_description, cell.apps.size, cell.folder.name, cell.apps.size)
-    val shown by animateFloatAsState(if (pending) PENDING_ALPHA else 1f, Motion.reflow(), label = "pending")
+    val motion = LauncherTheme.motion
+    // Fades while its removal waits, and back when it is cancelled (FR-ANIM-12).
+    val shown by animateFloatAsState(
+        targetValue = if (pending) PENDING_ALPHA else 1f,
+        animationSpec = if (pending) motion.fadeOut() else motion.fadeIn(),
+        label = "pending",
+    )
     Tile(
         label = cell.folder.name,
         labelLines = labelLines,

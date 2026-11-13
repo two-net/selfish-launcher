@@ -18,7 +18,8 @@ class FakeAppCatalog(apps: List<AppEntry> = emptyList()) : AppCatalog {
     var defaults: DefaultApps = DefaultApps()
     val icons = mutableMapOf<AppId, AppIconImage>()
 
-    val launched = mutableListOf<Pair<AppId, Bounds?>>()
+    /** Every launch, in order, with whether its window was to grow from [Launched.from] (FR-ANIM-02, FR-ANIM-15). */
+    val launched = mutableListOf<Launched>()
     val launchedShortcuts = mutableListOf<Pair<AppId, String>>()
     val openedAppInfo = mutableListOf<AppId>()
     val uninstallRequests = mutableListOf<AppId>()
@@ -28,8 +29,8 @@ class FakeAppCatalog(apps: List<AppEntry> = emptyList()) : AppCatalog {
 
     override suspend fun icon(app: AppId, sizePx: Int): AppIconImage? = icons[app]
 
-    override suspend fun launch(app: AppId, from: Bounds?) {
-        launched += app to from
+    override suspend fun launch(app: AppId, from: Bounds?, animate: Boolean) {
+        launched += Launched(app, from, animate)
     }
 
     override suspend fun openAppInfo(app: AppId) {
@@ -51,4 +52,6 @@ class FakeAppCatalog(apps: List<AppEntry> = emptyList()) : AppCatalog {
     override suspend fun open(screen: SystemScreen) {
         openedScreens += screen
     }
+
+    data class Launched(val app: AppId, val from: Bounds?, val animate: Boolean = true)
 }

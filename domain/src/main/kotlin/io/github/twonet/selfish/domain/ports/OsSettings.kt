@@ -14,7 +14,11 @@ interface OsSettings {
     /** The device's dark-theme setting; `null` if the device has none (FR-THM-03, FR-THM-04). */
     val systemDark: Flow<Boolean?>
 
-    /** Whether the system animator duration scale is 0 (FR-ANIM-15). */
+    /**
+     * Whether the system animator duration scale is 0, the "remove
+     * animations" setting (FR-ANIM-15): the current value on collection, then
+     * every change.
+     */
     val animationsOff: Flow<Boolean>
 
     /**

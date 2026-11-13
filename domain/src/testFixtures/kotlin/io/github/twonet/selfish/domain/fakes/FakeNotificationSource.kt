@@ -14,15 +14,15 @@ class FakeNotificationSource : NotificationSource {
     override val granted = MutableStateFlow(true)
     override val notifications = MutableStateFlow<List<NotificationItem>>(emptyList())
     var accessRequests = 0
-    val opened = mutableListOf<Pair<String, Bounds?>>()
+    val opened = mutableListOf<Opened>()
     val dismissed = mutableListOf<Set<NotificationRef>>()
 
     override suspend fun requestAccess() {
         accessRequests++
     }
 
-    override suspend fun open(key: String, from: Bounds?) {
-        opened += key to from
+    override suspend fun open(key: String, from: Bounds?, animate: Boolean) {
+        opened += Opened(key, from, animate)
     }
 
     /** Like the system: dismisses those still as they were shown that may be dismissed. */
@@ -30,4 +30,6 @@ class FakeNotificationSource : NotificationSource {
         dismissed += refs
         notifications.value = notifications.value.filterNot { it.clearable && it.ref in refs }
     }
+
+    data class Opened(val key: String, val from: Bounds?, val animate: Boolean = true)
 }
