@@ -2,9 +2,11 @@ package io.github.twonet.selfish.adapters.os
 
 import android.app.role.RoleManager
 import android.content.BroadcastReceiver
+import android.content.ComponentCallbacks
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.res.Configuration
 import android.database.ContentObserver
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -22,7 +24,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
@@ -30,9 +31,8 @@ import java.time.ZoneId
 /**
  * [OsSettings] over `Configuration.uiMode`, `Settings.Global`,
  * `ConnectivityManager`, `PowerManager`, the time broadcasts and `RoleManager`
- * (DESIGN §5.1). The Home role (#5), the clock (#6), the animator scale
- * (#13) and the network and power state (#14) are real; the dark theme
- * reports none until #17.
+ * (DESIGN §5.1): the Home role (#5), the clock (#6), the animator scale
+ * (#13), the network and power state (#14) and the dark theme (#17).
  */
 class AndroidOsSettings(
     context: Context,
@@ -43,7 +43,38 @@ class AndroidOsSettings(
     private val connectivity = appContext.getSystemService(ConnectivityManager::class.java)
     private val power = appContext.getSystemService(PowerManager::class.java)
 
-    override val systemDark: Flow<Boolean?> = flowOf(null)
+    /**
+     * The device's dark-theme setting (FR-THM-03): the value now, then after
+     * every configuration change that alters it. Scheduled dark theme and
+     * Battery Saver's switch it the same way, through the configuration's
+     * night bits. `null` if the device has none (FR-THM-04). The callback is
+     * registered only while the flow is collected.
+     *
+     * Nothing in the launcher overrides its own night mode, so the
+     * application's configuration is the system's.
+     */
+    override val systemDark: Flow<Boolean?> = darkThemeChanges().distinctUntilChanged().conflate()
+
+    private fun darkThemeChanges(): Flow<Boolean?> = callbackFlow {
+        val callbacks = object : ComponentCallbacks {
+            override fun onConfigurationChanged(newConfig: Configuration) {
+                trySend(newConfig.isDark())
+            }
+
+            @Deprecated("Deprecated in the platform; only configuration changes matter here.")
+            override fun onLowMemory() = Unit
+        }
+        appContext.registerComponentCallbacks(callbacks)
+        // After registering, so a change in between isn't missed.
+        trySend(appContext.resources.configuration.isDark())
+        awaitClose { appContext.unregisterComponentCallbacks(callbacks) }
+    }
+
+    private fun Configuration.isDark(): Boolean? = when (uiMode and Configuration.UI_MODE_NIGHT_MASK) {
+        Configuration.UI_MODE_NIGHT_YES -> true
+        Configuration.UI_MODE_NIGHT_NO -> false
+        else -> null
+    }
 
     /**
      * Whether the system's animator duration scale is 0, the "remove

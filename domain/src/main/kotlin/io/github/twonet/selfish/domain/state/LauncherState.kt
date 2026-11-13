@@ -5,6 +5,7 @@ import io.github.twonet.selfish.domain.events.NotificationGroups
 import io.github.twonet.selfish.domain.layout.LayoutRules
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.Animations
+import io.github.twonet.selfish.domain.model.Appearance
 import io.github.twonet.selfish.domain.model.FolderId
 import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Layout
@@ -24,6 +25,7 @@ import io.github.twonet.selfish.domain.remorse.Destructive
 import io.github.twonet.selfish.domain.remorse.PendingRemorse
 import io.github.twonet.selfish.domain.theme.Highlight
 import io.github.twonet.selfish.domain.theme.HighlightColor
+import io.github.twonet.selfish.domain.theme.resolveAppearance
 import io.github.twonet.selfish.domain.wallpaper.CheckTrigger
 
 /**
@@ -156,6 +158,12 @@ data class LauncherState(
      * duration scale is 0 (FR-ANIM-15). Followed from the OS, never saved.
      */
     val systemAnimationsOff: Boolean = false,
+    /**
+     * The device's dark-theme setting, including scheduled and Battery Saver
+     * changes (FR-THM-03), or `null` if the device has none (FR-THM-04) or
+     * hasn't reported it yet. Followed from the OS, never saved.
+     */
+    val systemDark: Boolean? = null,
 )
 
 /**
@@ -259,6 +267,13 @@ val LauncherState.showsAmbiences: Boolean
  */
 val LauncherState.reducedMotion: Boolean
     get() = systemAnimationsOff || settings.animations == Animations.Reduced
+
+/**
+ * The appearance every surface is drawn in (FR-THM-01, FR-THM-07): the
+ * chosen mode, with System following the device (DESIGN §4.4).
+ */
+val LauncherState.appearance: Appearance
+    get() = resolveAppearance(settings.appearance, systemDark)
 
 /** The notifications whose clearing is waiting for its remorse timer, if any (FR-EVT-06). */
 val LauncherState.pendingClear: Set<NotificationRef>

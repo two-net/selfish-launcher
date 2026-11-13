@@ -17,8 +17,9 @@ import kotlin.test.assertTrue
 /**
  * The token values meet the SRS (DESIGN §6.5). Colors are checked over the two
  * worst-case wallpapers, pure white and pure black, so they hold over any
- * wallpaper. The adaptive scrims of #6 only ever get weaker than [LauncherColors.scrim]
- * over wallpapers that don't need it.
+ * wallpaper. Home's scrim is [LauncherColors.scrim] itself; a scrim adapted to
+ * the wallpaper's brightness, still unscheduled, would only ever be weaker over
+ * wallpapers that don't need it.
  */
 class DesignTokensTest {
     private val appearances = mapOf(Appearance.Light to LightColors, Appearance.Dark to DarkColors)

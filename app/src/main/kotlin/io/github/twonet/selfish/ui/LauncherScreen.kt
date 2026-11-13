@@ -48,12 +48,14 @@ import androidx.compose.ui.util.lerp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import io.github.twonet.selfish.R
+import io.github.twonet.selfish.domain.model.Appearance
 import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.Layer
 import io.github.twonet.selfish.domain.remorse.Destructive
 import io.github.twonet.selfish.domain.remorse.REMORSE_DELAY
 import io.github.twonet.selfish.domain.model.WallpaperEntry
 import io.github.twonet.selfish.domain.state.LauncherState
+import io.github.twonet.selfish.domain.state.appearance
 import io.github.twonet.selfish.domain.state.openFolder
 import io.github.twonet.selfish.ui.components.LauncherHaptics
 import io.github.twonet.selfish.ui.components.RemorseBanner
@@ -104,6 +106,9 @@ import kotlinx.coroutines.launch
  * from slightly smaller and partly transparent (FR-ANIM-03). Under reduced
  * motion every transition is instant or a short fade, and drags still
  * follow the finger (FR-ANIM-15).
+ *
+ * The status-bar and navigation-bar icons follow the appearance, so they
+ * stay legible over every surface (FR-THM-08).
  */
 @Composable
 fun LauncherScreen(
@@ -111,6 +116,9 @@ fun LauncherScreen(
     dispatch: (Action) -> Unit,
     gestureInsets: WindowInsets = WindowInsets.systemGestures.union(WindowInsets.statusBars),
 ) {
+    // The system bars follow the appearance from the first frame, even
+    // before the saved layout is read (FR-THM-08).
+    SystemBars(dark = state.appearance == Appearance.Dark)
     // Until the saved layout is read, only the wallpaper shows (FR-GEN-08).
     if (!state.restored) return
 

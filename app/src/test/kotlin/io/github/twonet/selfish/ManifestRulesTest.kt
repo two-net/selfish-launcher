@@ -11,7 +11,8 @@ import kotlin.test.assertTrue
 
 /**
  * How the system sees the launcher (DESIGN §5.6): its name and icon, the
- * Home role, the orientation and the network security config. Runs as a JVM
+ * Home role, the orientation, the configuration changes it handles itself
+ * and the network security config. Runs as a JVM
  * test from the `app` module directory.
  */
 class ManifestRulesTest {
@@ -71,6 +72,16 @@ class ManifestRulesTest {
     @Verifies("FR-GEN-09")
     fun `the launcher is portrait`() {
         assertEquals("portrait", mainActivity.android("screenOrientation"))
+    }
+
+    @Test
+    @Verifies("FR-THM-03")
+    fun `a change of the system theme or the screen doesn't recreate the launcher`() {
+        // Compose redraws from the new configuration instead, which keeps the
+        // view, scroll positions and search text (DESIGN §5.6).
+        val handled = mainActivity.android("configChanges").split('|').toSet()
+        val needed = setOf("uiMode", "orientation", "screenSize", "density", "fontScale", "locale", "layoutDirection")
+        assertTrue(handled.containsAll(needed), "configChanges lacks ${needed - handled}")
     }
 
     @Test

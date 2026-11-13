@@ -18,8 +18,8 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * [AndroidOsSettings] against the device's real settings (level A, DESIGN
- * §8.3). The animator scale, Battery Saver and Data Saver are changed
- * through the shell, as their switches do, and put back afterwards.
+ * §8.3). The animator scale, dark theme, Battery Saver and Data Saver are
+ * changed through the shell, as their switches do, and put back afterwards.
  */
 @RunWith(AndroidJUnit4::class)
 class AndroidOsSettingsTest {
@@ -59,6 +59,33 @@ class AndroidOsSettingsTest {
                 if (off) shell("settings put global $ANIMATOR_SCALE 0.5")
                 !off
             }
+        }
+    }
+
+    @Test
+    @Verifies("FR-THM-03")
+    fun theDarkThemeIsReportedAndSwitchingItIsToo() = runBlocking<Unit> {
+        // "Night mode: yes", "no", "auto" or "custom", put back afterwards.
+        val saved = shell("cmd uimode night").substringAfter(":").trim()
+        try {
+            shell("cmd uimode night no")
+            withTimeout(TIMEOUT) { settings.systemDark.first { it == false } }
+
+            withTimeout(TIMEOUT) {
+                settings.systemDark.first { dark ->
+                    // Changed once the flow is listening, so the change itself is observed.
+                    if (dark == false) shell("cmd uimode night yes")
+                    dark == true
+                }
+            }
+            withTimeout(TIMEOUT) {
+                settings.systemDark.first { dark ->
+                    if (dark == true) shell("cmd uimode night no")
+                    dark == false
+                }
+            }
+        } finally {
+            if (saved.isNotEmpty()) shell("cmd uimode night $saved")
         }
     }
 

@@ -26,10 +26,12 @@ import io.github.twonet.selfish.domain.Verifies
 import io.github.twonet.selfish.domain.model.AppliedWallpaper
 import io.github.twonet.selfish.domain.model.FolderId
 import io.github.twonet.selfish.domain.model.GridItem
+import io.github.twonet.selfish.domain.model.HighlightSetting
 import io.github.twonet.selfish.domain.model.WallpaperStatus
 import io.github.twonet.selfish.domain.ports.WallpaperId
 import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.Layer
+import io.github.twonet.selfish.domain.theme.Highlight
 import io.github.twonet.selfish.ui.TestLauncher.Companion.app
 import io.github.twonet.selfish.ui.TestLauncher.Companion.launcher
 import io.github.twonet.selfish.ui.folder.FolderTags
@@ -39,6 +41,7 @@ import io.github.twonet.selfish.ui.tokens.DarkColors
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
 import io.github.twonet.selfish.ui.tokens.LightColors
 import io.github.twonet.selfish.ui.tokens.Motion
+import io.github.twonet.selfish.ui.tokens.color
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -145,22 +148,46 @@ class MotionTest {
     @Test
     @Verifies("FR-ANIM-10")
     fun aNewHighlightMovesThereOverTheAmbientDuration() {
-        var highlight by mutableStateOf(LightColors.highlightDefault)
+        var highlight by mutableStateOf<Highlight?>(null)
         var shown = Color.Unspecified
         rule.setContent {
             LauncherTheme(highlight = highlight) { shown = LauncherTheme.highlight }
         }
         rule.waitForIdle()
+        assertEquals(LightColors.highlightDefault, shown)
         rule.mainClock.autoAdvance = false
 
-        highlight = DarkColors.highlightDefault
+        highlight = ORANGE
         rule.mainClock.advanceTimeByFrame()
         rule.mainClock.advanceTimeBy(Motion.LONG_MILLIS.toLong())
         val afterLong = shown
         rule.mainClock.advanceTimeBy((Motion.AMBIENT_MILLIS - Motion.LONG_MILLIS).toLong() + FRAME_MILLIS)
 
-        assertNotEquals(DarkColors.highlightDefault, afterLong, "Still moving after the Long duration")
-        assertEquals(DarkColors.highlightDefault, shown)
+        assertNotEquals(ORANGE.color(dark = false), afterLong, "Still moving after the Long duration")
+        assertEquals(ORANGE.color(dark = false), shown)
+    }
+
+    @Test
+    @Verifies("FR-ANIM-11")
+    fun anAppearanceChangeMovesTheHighlightOverTheLongDurationLikeEveryOtherColor() {
+        var dark by mutableStateOf(false)
+        var shown = Color.Unspecified
+        rule.setContent {
+            LauncherTheme(dark = dark, highlight = ORANGE) { shown = LauncherTheme.highlight }
+        }
+        rule.waitForIdle()
+        assertEquals(ORANGE.color(dark = false), shown)
+        rule.mainClock.autoAdvance = false
+
+        dark = true
+        rule.mainClock.advanceTimeByFrame()
+        rule.mainClock.advanceTimeBy(Motion.LONG_MILLIS / 2L)
+        val halfway = shown
+        rule.mainClock.advanceTimeBy(Motion.LONG_MILLIS / 2L + FRAME_MILLIS)
+
+        assertNotEquals(ORANGE.color(dark = false), halfway, "Moving halfway through")
+        assertNotEquals(ORANGE.color(dark = true), halfway, "Moving halfway through")
+        assertEquals(ORANGE.color(dark = true), shown, "There after the Long duration, not the Ambient one")
     }
 
     @Test
@@ -236,6 +263,9 @@ class MotionTest {
     }
 
     private companion object {
+        /** An ambience's highlight, with a color for each appearance (FR-AMB-02). */
+        val ORANGE = Highlight.of(HighlightSetting.Orange.color!!)
+
         const val FRAME_MILLIS = 16L
         const val SCALE_TOLERANCE = 0.01f
     }

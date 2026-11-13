@@ -64,6 +64,12 @@ sealed interface Action {
     /** The system's "remove animations" setting is now [off], or not (FR-ANIM-15). */
     data class SystemAnimationsChanged(val off: Boolean) : Action
 
+    /**
+     * The device's dark-theme setting is now [dark], or `null` if the device
+     * has none (FR-THM-03, FR-THM-04).
+     */
+    data class SystemDarkChanged(val dark: Boolean?) : Action
+
     /** The user long-pressed [target]; its menu replaces any open one (FR-HOME-06, FR-GRID-06). */
     data class OpenContextMenu(val target: MenuTarget) : Action
 

@@ -70,7 +70,8 @@ enum class AppearanceMode {
 
 /**
  * An appearance resolved from [AppearanceMode] and the device: what the
- * colors are drawn for (FR-THM-01). #17 resolves it; never saved.
+ * colors are drawn for (FR-THM-01). `LauncherState.appearance` resolves it
+ * (`theme/ThemeResolver`); never saved.
  */
 enum class Appearance { Light, Dark }
 

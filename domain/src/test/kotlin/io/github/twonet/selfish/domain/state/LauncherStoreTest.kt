@@ -9,6 +9,7 @@ import io.github.twonet.selfish.domain.fakes.FakeWallpaperScheduler
 import io.github.twonet.selfish.domain.fakes.fakePorts
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.AppId
+import io.github.twonet.selfish.domain.model.Appearance
 import io.github.twonet.selfish.domain.model.AppearanceMode
 import io.github.twonet.selfish.domain.model.Bounds
 import io.github.twonet.selfish.domain.model.FolderId
@@ -133,6 +134,56 @@ class LauncherStoreTest {
         os.animationsOff.value = false
         runCurrent()
         assertFalse(store.state.value.reducedMotion)
+    }
+
+    @Test
+    @Verifies("FR-THM-02", "FR-THM-03", "AC-01")
+    fun `on a fresh install in dark theme the launcher is Dark, and follows the device as it changes`() = runTest {
+        os.systemDark.value = true
+        val store = startedStore()
+
+        assertTrue(store.state.value.restored)
+        assertEquals(AppearanceMode.System, store.state.value.settings.appearance)
+        assertEquals(Appearance.Dark, store.state.value.appearance)
+
+        os.systemDark.value = false
+        runCurrent()
+        assertEquals(Appearance.Light, store.state.value.appearance)
+    }
+
+    @Test
+    fun `the device's theme is known before the saved state is restored`() = runTest {
+        os.systemDark.value = true
+        val reading = CompletableDeferred<Unit>()
+        val slowStorage = object : LocalStorage by storage {
+            override suspend fun read(doc: DocName): String? {
+                reading.await()
+                return storage.read(doc)
+            }
+        }
+        val store = startedStore(fakePorts(appCatalog = catalog, localStorage = slowStorage, osSettings = os))
+
+        assertFalse(store.state.value.restored)
+        assertEquals(Appearance.Dark, store.state.value.appearance)
+        reading.complete(Unit)
+    }
+
+    @Test
+    @Verifies("FR-THM-06")
+    fun `an explicit appearance overrides the device and is saved`() = runTest {
+        os.systemDark.value = true
+        val store = startedStore()
+
+        store.dispatch(Action.SetAppearance(AppearanceMode.Light))
+        runCurrent()
+        assertEquals(Appearance.Light, store.state.value.appearance)
+        assertEquals(AppearanceMode.Light, SettingsDoc.decode(storage.docs[DocName.Settings]).appearance)
+
+        os.systemDark.value = false
+        store.dispatch(Action.SetAppearance(AppearanceMode.Dark))
+        runCurrent()
+        assertEquals(Appearance.Dark, store.state.value.appearance, "Dark while the device is light")
+        assertEquals(AppearanceMode.Dark, SettingsDoc.decode(storage.docs[DocName.Settings]).appearance)
     }
 
     @Test
@@ -417,7 +468,9 @@ class LauncherStoreTest {
         scheduler.trigger(ScheduledRun { finished++ })
         runCurrent()
 
-        assertEquals(LauncherState(), store.state.value)
+        // Only the device's own settings arrive before the restore, so the
+        // first frame is already in its theme (AC-01).
+        assertEquals(LauncherState(systemDark = false), store.state.value)
         assertEquals(0, finished)
 
         gate.complete(Unit)

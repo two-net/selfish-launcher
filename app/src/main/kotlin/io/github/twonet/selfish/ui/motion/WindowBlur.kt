@@ -1,8 +1,5 @@
 package io.github.twonet.selfish.ui.motion
 
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
 import android.os.Build
 import android.view.Window
 import android.view.WindowManager
@@ -17,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import io.github.twonet.selfish.ui.findActivity
 import io.github.twonet.selfish.ui.tokens.Sizes
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.util.function.Consumer
@@ -64,9 +62,3 @@ private fun BackgroundBlur(progress: () -> Float) {
 
 @RequiresApi(Build.VERSION_CODES.S)
 private fun Window.setBlur(radius: Int) = setBackgroundBlurRadius(radius)
-
-private tailrec fun Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
-    else -> null
-}

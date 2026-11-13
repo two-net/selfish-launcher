@@ -15,12 +15,14 @@ import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.Density
 import io.github.twonet.selfish.domain.model.AppEntry
+import io.github.twonet.selfish.domain.model.Appearance
 import io.github.twonet.selfish.domain.model.AppId
 import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.Layer
 import io.github.twonet.selfish.domain.state.LauncherState
+import io.github.twonet.selfish.domain.state.appearance
 import io.github.twonet.selfish.domain.state.highlight
 import io.github.twonet.selfish.domain.state.reduce
 import io.github.twonet.selfish.domain.state.reducedMotion
@@ -28,7 +30,6 @@ import io.github.twonet.selfish.ui.motion.GestureMath
 import io.github.twonet.selfish.ui.tokens.DefaultType
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
 import io.github.twonet.selfish.ui.tokens.Sizes
-import io.github.twonet.selfish.ui.tokens.color
 import kotlin.math.ln
 import java.time.LocalDate
 import io.github.twonet.selfish.domain.ports.ImageId
@@ -69,7 +70,11 @@ class TestLauncher(private val rule: ComposeContentTestRule) {
                 LocalDensity provides Density(density.density, fontScale ?: density.fontScale),
                 LocalHapticFeedback provides platformHaptics,
             ) {
-                LauncherTheme(highlight = this.state.highlight?.color(dark = false), reducedMotion = this.state.reducedMotion) {
+                LauncherTheme(
+                    dark = this.state.appearance == Appearance.Dark,
+                    highlight = this.state.highlight,
+                    reducedMotion = this.state.reducedMotion,
+                ) {
                     LauncherScreen(this.state, ::dispatch, gestureInsets)
                 }
             }

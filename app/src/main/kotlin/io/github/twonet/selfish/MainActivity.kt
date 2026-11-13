@@ -13,7 +13,9 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.twonet.selfish.domain.model.Appearance
 import io.github.twonet.selfish.domain.state.Action
+import io.github.twonet.selfish.domain.state.appearance
 import io.github.twonet.selfish.domain.state.highlight
 import io.github.twonet.selfish.domain.state.reducedMotion
 import io.github.twonet.selfish.ui.components.AppIcons
@@ -22,7 +24,6 @@ import io.github.twonet.selfish.ui.components.LocalWallpaperImages
 import io.github.twonet.selfish.ui.components.WallpaperImages
 import io.github.twonet.selfish.ui.LauncherScreen
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
-import io.github.twonet.selfish.ui.tokens.color
 
 /**
  * The one Activity for every launcher surface (DESIGN §6.1). It turns the
@@ -35,10 +36,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Dark status-bar icons over Home's light scrim (FR-HOME-01), since
-        // the launcher is always Light until #17 resolves the appearance
-        // (FR-THM-08). The navigation bar keeps the system's own contrast.
-        enableEdgeToEdge(statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT))
+        // Transparent bars, with icons for the system's theme until the first
+        // frame: System is the default appearance. From then on `SystemBars`
+        // sets them for the appearance in use (FR-THM-08, FR-HOME-01). The
+        // navigation bar keeps the system's enforced contrast, a scrim that
+        // only 3-button navigation gets, which follows the same icon setting.
+        enableEdgeToEdge(statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT))
         val store = graph.store
         graph.attach(this)
 
@@ -59,8 +62,8 @@ class MainActivity : ComponentActivity() {
             // Read apart from the rest of the state, so the theme changes only when these do.
             val reducedMotion by remember { derivedStateOf { state.value.reducedMotion } }
             val highlight by remember { derivedStateOf { state.value.highlight } }
-            // Always Light until #17 resolves the appearance and passes it here.
-            LauncherTheme(highlight = highlight?.color(dark = false), reducedMotion = reducedMotion) {
+            val dark by remember { derivedStateOf { state.value.appearance == Appearance.Dark } }
+            LauncherTheme(dark = dark, highlight = highlight, reducedMotion = reducedMotion) {
                 CompositionLocalProvider(LocalAppIcons provides icons, LocalWallpaperImages provides wallpapers) {
                     LauncherScreen(state.value, store::dispatch)
                 }

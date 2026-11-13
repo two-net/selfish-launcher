@@ -86,8 +86,9 @@ fun HomeScreen(
     }
     Column(modifier.fillMaxSize().onUnhandledLongPress(openTopMenu).testTag(HomeTags.SCREEN)) {
         // A scrim behind the status bar and the clock keeps both legible
-        // over any wallpaper (FR-HOME-01). It is the worst case for now;
-        // #16 weakens it over wallpapers that don't need it.
+        // over any wallpaper (FR-HOME-01): light in Light, dark in Dark
+        // (FR-THM-05). It is the appearance's worst case; weakening it over
+        // wallpapers that don't need it is unscheduled (DESIGN §6.5).
         Column(
             Modifier
                 .fillMaxWidth()

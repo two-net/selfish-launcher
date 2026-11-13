@@ -90,9 +90,16 @@ issues add their items here. Every release PR signs off the whole list.
 
 ## Ambience (SRS §4.11)
 
-- [ ] [FR-AMB-01, FR-AMB-02, AC-03] On a device, when "Refresh now" brings a new image, page headers, press glows, the pulley flash, the remorse bar and the Top Menu's outlines take a prominent color from it, and move there over the Ambient duration as the image crossfades in. Choosing another ambience in the Top Menu does the same. The color stays legible over a bright and a dark image (Dark arrives with #17). Checked with a screen recording.
+- [ ] [FR-AMB-01, FR-AMB-02, AC-03] On a device, when "Refresh now" brings a new image, page headers, press glows, the pulley flash, the remorse bar and the Top Menu's outlines take a prominent color from it, and move there over the Ambient duration as the image crossfades in. Choosing another ambience in the Top Menu does the same. The color stays legible over a bright and a dark image, in both appearances. Checked with a screen recording.
 - [ ] [FR-AMB-03] Setting a photo as the wallpaper in the system's picker or a gallery app and returning to Home gives a highlight from the photo's colors; a black-and-white photo gives the default highlight. With Daily Bing wallpaper on, the launcher's next image takes over again.
 - [ ] [FR-AMB-04] The highlight colors only headers and states: page headers, press glows, selected and active outlines, the remorse bar, pulley highlights and text cursors. Body text, labels and notification text never take it.
+
+## Appearance (SRS §4.12)
+
+- [ ] [FR-THM-03, AC-01] On a device, with Appearance set to System and the App Grid open, scrolled and with a query typed: switching the device's dark theme from Quick Settings crossfades the launcher within a second, keeping the grid, its scroll position and the query. So does a dark-theme schedule taking effect, and Battery Saver turning dark theme on. Checked with a screen recording.
+- [ ] [FR-THM-05, NFR-A11Y-03] In both appearances, over a bright and a dark wallpaper, text stays legible on Home (the clock on its scrim), on glass and on the dim, and the wallpaper itself never changes.
+- [ ] [FR-THM-07, FR-THM-09, AC-02] With the device in dark theme, choosing Light in the Top Menu turns every surface Light at once (Home, the App Grid, a folder, a context menu, the remorse banner, Events, the Top Menu, Wallpaper details) and it stays Light after a restart; choosing Dark with the device light does the opposite. Settings (#18) and the tutorial (#19) are checked as they arrive.
+- [ ] [FR-THM-08] On each surface, in both appearances, the status-bar icons and the navigation bar stay legible: with gesture navigation the handle, and with 3-button navigation the buttons on their scrim.
 
 ## Bing interface (SRS §5.3)
 

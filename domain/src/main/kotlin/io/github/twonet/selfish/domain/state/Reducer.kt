@@ -147,6 +147,10 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
     is Action.SystemAnimationsChanged ->
         if (action.off == state.systemAnimationsOff) Next(state) else Next(state.copy(systemAnimationsOff = action.off))
 
+    // In System mode the appearance follows it (FR-THM-03, DESIGN §4.4).
+    is Action.SystemDarkChanged ->
+        if (action.dark == state.systemDark) Next(state) else Next(state.copy(systemDark = action.dark))
+
     is Action.OpenContextMenu ->
         Next(state.copy(overlays = state.overlays.filterNot { it is Overlay.ContextMenu } + Overlay.ContextMenu(action.target)))
 
@@ -329,7 +333,9 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
         if (!state.notificationsOn || refs.isEmpty()) Next(state) else startRemorse(state, Destructive.ClearNotifications(refs))
     }
 
-    // Saved with the settings; #17 makes the theme follow it (FR-TOP-02).
+    // Saved with the settings, and the theme follows it at once through
+    // `appearance`; Light or Dark overrides the device (FR-TOP-02, FR-THM-06,
+    // FR-THM-09).
     is Action.SetAppearance ->
         if (action.mode == state.settings.appearance) {
             Next(state)

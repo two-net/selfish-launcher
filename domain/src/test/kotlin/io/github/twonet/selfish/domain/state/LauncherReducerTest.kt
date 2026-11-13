@@ -4,6 +4,7 @@ import io.github.twonet.selfish.domain.Verifies
 import io.github.twonet.selfish.domain.model.Animations
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.AppId
+import io.github.twonet.selfish.domain.model.Appearance
 import io.github.twonet.selfish.domain.model.AppearanceMode
 import io.github.twonet.selfish.domain.model.Bounds
 import io.github.twonet.selfish.domain.model.FolderId
@@ -62,6 +63,31 @@ class LauncherReducerTest {
         assertTrue(off.reducedMotion)
         assertSame(off, reduce(off, Action.SystemAnimationsChanged(off = true)).state)
         assertFalse(reduce(off, Action.SystemAnimationsChanged(off = false)).state.reducedMotion)
+    }
+
+    @Test
+    @Verifies("FR-THM-02", "FR-THM-03", "FR-THM-04")
+    fun `by default the appearance follows the device's dark theme`() {
+        assertEquals(Appearance.Light, LauncherState().appearance, "Light until the device says otherwise")
+
+        val dark = reduce(LauncherState(), Action.SystemDarkChanged(dark = true)).state
+        assertEquals(true, dark.systemDark)
+        assertEquals(Appearance.Dark, dark.appearance)
+        assertSame(dark, reduce(dark, Action.SystemDarkChanged(dark = true)).state)
+        assertEquals(Appearance.Light, reduce(dark, Action.SystemDarkChanged(dark = false)).state.appearance)
+        assertEquals(Appearance.Light, reduce(dark, Action.SystemDarkChanged(dark = null)).state.appearance)
+    }
+
+    @Test
+    @Verifies("FR-THM-06", "FR-THM-09")
+    fun `choosing Light or Dark overrides the device until System is chosen again`() {
+        val deviceDark = LauncherState(systemDark = true)
+
+        val light = reduce(deviceDark, Action.SetAppearance(AppearanceMode.Light)).state
+        assertEquals(Appearance.Light, light.appearance)
+        val dark = reduce(reduce(light, Action.SystemDarkChanged(dark = false)).state, Action.SetAppearance(AppearanceMode.Dark)).state
+        assertEquals(Appearance.Dark, dark.appearance, "Dark while the device is light")
+        assertEquals(Appearance.Light, reduce(dark, Action.SetAppearance(AppearanceMode.System)).state.appearance)
     }
 
     @Test

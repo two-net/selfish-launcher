@@ -77,7 +77,10 @@ class LauncherStore(
      *
      * The port flows are subscribed right away, because the scheduler's runs
      * are lost if nobody is listening. Their events are held back until the
-     * saved state is restored, so features always see it.
+     * saved state is restored, so features always see it. The system's
+     * animation and dark-theme settings aren't held back: they need no saved
+     * state, and the launcher's first frame should already be drawn in the
+     * device's theme (FR-THM-03, AC-01).
      *
      * The clock is the exception: it is followed only while the launcher is
      * on screen, so it never wakes the launcher in the background
@@ -99,6 +102,9 @@ class LauncherStore(
             .launchIn(scope)
         ports.osSettings.animationsOff
             .onEach { dispatch(Action.SystemAnimationsChanged(it)) }
+            .launchIn(scope)
+        ports.osSettings.systemDark
+            .onEach { dispatch(Action.SystemDarkChanged(it)) }
             .launchIn(scope)
         state.map { it.homeShown }
             .distinctUntilChanged()
