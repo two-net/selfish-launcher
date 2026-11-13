@@ -9,6 +9,7 @@ import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.model.Settings
 import io.github.twonet.selfish.domain.ports.ClockInfo
 import io.github.twonet.selfish.domain.ports.DefaultApps
+import io.github.twonet.selfish.domain.ports.NotificationItem
 import io.github.twonet.selfish.domain.ports.ScheduledRun
 
 /** Everything that can change [LauncherState]: user actions from Presentation and events from ports. */
@@ -119,4 +120,38 @@ sealed interface Action {
 
     /** "Uninstall", which opens the system's confirmation (FR-GRID-06). */
     data class Uninstall(val app: AppId) : Action
+
+    /**
+     * The Events card or pulley item "Wallpaper details" (FR-EVT-03,
+     * FR-EVT-06). Ignored without a wallpaper entry, since there is nothing
+     * to show.
+     */
+    data object OpenWallpaperDetails : Action
+
+    /** "Learn more" about the wallpaper, which opens [url] in the browser (FR-EVT-03). */
+    data class OpenLink(val url: String) : Action
+
+    /** The notification access check answered [granted] (FR-EVT-07, FR-ONB-04). */
+    data class NotificationAccessChanged(val granted: Boolean) : Action
+
+    /** The current notifications, newest first (FR-EVT-04). */
+    data class NotificationsChanged(val items: List<NotificationItem>) : Action
+
+    /**
+     * "Turn on" in the Events card (FR-EVT-07). Without access, it asks for
+     * it first (FR-ONB-04).
+     */
+    data object TurnOnNotifications : Action
+
+    /** The Events card about notifications was dismissed, which hides it for good (FR-EVT-07). */
+    data object HideNotificationsCard : Action
+
+    /** The user tapped the notification [key]; [from] is its row's bounds on screen (FR-EVT-04). */
+    data class OpenNotification(val key: String, val from: Bounds?) : Action
+
+    /** The notification [key] was swiped away (FR-EVT-05). */
+    data class DismissNotification(val key: String) : Action
+
+    /** "Clear notifications", which runs once its remorse timer runs out (FR-EVT-06, FR-GEST-06). */
+    data object ClearNotifications : Action
 }

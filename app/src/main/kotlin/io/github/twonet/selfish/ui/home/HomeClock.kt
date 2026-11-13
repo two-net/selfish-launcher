@@ -1,7 +1,5 @@
 package io.github.twonet.selfish.ui.home
 
-import android.icu.text.DateFormat
-import android.icu.util.TimeZone
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -9,13 +7,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.semantics
 import io.github.twonet.selfish.domain.ports.ClockInfo
+import io.github.twonet.selfish.ui.components.ClockFormat
 import io.github.twonet.selfish.ui.components.LauncherText
 import io.github.twonet.selfish.ui.tokens.Emphasis
 import io.github.twonet.selfish.ui.tokens.TextRole
 import java.util.Date
-import java.util.Locale
-import java.time.ZoneId
-import java.util.TimeZone as JavaTimeZone
 
 /**
  * Home's time and date in large type (FR-HOME-02), in the device locale's
@@ -27,9 +23,9 @@ import java.util.TimeZone as JavaTimeZone
 fun HomeClock(clock: ClockInfo, modifier: Modifier = Modifier) {
     val locale = LocalConfiguration.current.locales[0]
     val time = remember(locale, clock.zone, clock.is24Hour) {
-        formatter(if (clock.is24Hour) TIME_24 else TIME_12, locale, clock.zone)
+        ClockFormat.formatter(ClockFormat.time(clock.is24Hour), locale, clock.zone)
     }
-    val date = remember(locale, clock.zone) { formatter(DATE, locale, clock.zone) }
+    val date = remember(locale, clock.zone) { ClockFormat.formatter(ClockFormat.DATE, locale, clock.zone) }
     val now = Date.from(clock.now)
     Column(modifier.semantics(mergeDescendants = true) {}) {
         LauncherText(text = time.format(now), role = TextRole.Display, maxLines = 1)
@@ -37,12 +33,3 @@ fun HomeClock(clock: ClockInfo, modifier: Modifier = Modifier) {
     }
 }
 
-private fun formatter(skeleton: String, locale: Locale, zone: ZoneId): DateFormat =
-    DateFormat.getInstanceForSkeleton(skeleton, locale).apply {
-        // Through java.util, which also names fixed offsets in a form ICU knows.
-        timeZone = TimeZone.getTimeZone(JavaTimeZone.getTimeZone(zone).id)
-    }
-
-private const val TIME_24 = "Hm"
-private const val TIME_12 = "hm"
-private const val DATE = "EEEEMMMMd"

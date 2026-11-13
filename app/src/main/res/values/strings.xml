@@ -11,6 +11,8 @@
     <string name="action_open_menu">Open menu</string>
     <!-- The screen-reader action on Home that opens the App Grid instead of swiping up (FR-GEST-09). -->
     <string name="action_show_apps">Show apps</string>
+    <!-- The screen-reader action on Home that opens Events instead of swiping sideways (FR-GEST-09). -->
+    <string name="action_show_events">Show events</string>
 
     <!-- App Grid (SRS §4.3) -->
     <string name="menu_app_info">App info</string>
@@ -31,9 +33,33 @@
     <!-- A folder panel's pulley menu item; its apps go back into the grid after a remorse timer (FR-FOLD-07). -->
     <string name="menu_remove_folder">Remove folder</string>
 
+    <!-- Events (SRS §4.6) -->
+    <!-- The screen-reader action in Events that returns to Home instead of swiping sideways (FR-GEST-09). -->
+    <string name="action_show_home">Show Home</string>
+    <!-- The heading of the card about the image of the day used as the wallpaper (FR-EVT-03). -->
+    <string name="events_wallpaper_title">Today\'s wallpaper</string>
+    <!-- Opens the page about the wallpaper image in the browser (FR-EVT-03). -->
+    <string name="events_learn_more">Learn more</string>
+    <!-- Shown when Events has nothing besides the wallpaper card (FR-EVT-08). -->
+    <string name="events_no_new_events">No new events</string>
+    <!-- The card offering to show notifications in Events, until it is dismissed (FR-EVT-07, FR-ONB-04). -->
+    <string name="events_notifications_card">See your notifications here, grouped by app. Selfish Launcher needs notification access for this. It only shows them: they are never saved or sent anywhere.</string>
+    <!-- Turns notifications in Events on, asking for notification access first if needed (FR-EVT-07). -->
+    <string name="events_notifications_turn_on">Turn on</string>
+    <!-- Hides the notifications card for good (FR-EVT-07). -->
+    <string name="events_notifications_hide">Hide</string>
+    <!-- The screen-reader action on a notification that dismisses it, instead of swiping it sideways (FR-EVT-05). -->
+    <string name="action_dismiss_notification">Dismiss</string>
+    <!-- Events' pulley menu item that opens Wallpaper details (FR-EVT-06). -->
+    <string name="menu_wallpaper_details">Wallpaper details</string>
+    <!-- Events' pulley menu item that clears the dismissible notifications after a remorse timer (FR-EVT-06). -->
+    <string name="menu_clear_notifications">Clear notifications</string>
+
     <!-- Remorse timers (FR-GEST-06) -->
     <!-- The banner of a folder about to be removed. -->
     <string name="remorse_remove_folder">Removing folder</string>
+    <!-- The banner of notifications about to be cleared. -->
+    <string name="remorse_clear_notifications">Clearing notifications</string>
     <!-- How screen readers read the remorse banner, a button that cancels the action: %1$s is the banner's label. -->
     <string name="remorse_cancel">Cancel: %1$s</string>
 </resources>

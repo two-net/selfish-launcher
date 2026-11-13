@@ -122,6 +122,7 @@ class DesignTokensTest {
             Sizes.PulleyIndicatorWidth,
             Sizes.PulleyIndicatorThickness,
             Sizes.RemorseBar,
+            Sizes.WallpaperThumbnail,
         )
         val offScale = (Spacing.scale + sizes)
             .filter { it.value <= 0f || it.value % Spacing.Step.value != 0f }

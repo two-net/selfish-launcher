@@ -37,6 +37,18 @@
             android:name=".scheduler.WallpaperJobService"
             android:exported="true"
             android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- Optional (AR-09): notifications in Events, once the user grants
+             access in system settings (FR-EVT-04, DESIGN §5.5, §5.6). Only
+             the system can bind it. -->
+        <service
+            android:name=".notifications.LauncherNotificationListener"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

@@ -1,6 +1,7 @@
 package io.github.twonet.selfish.domain.remorse
 
 import io.github.twonet.selfish.domain.model.FolderId
+import io.github.twonet.selfish.domain.ports.NotificationRef
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -12,12 +13,17 @@ val REMORSE_DELAY: Duration = 5.seconds
 
 /**
  * An action that runs only once its remorse timer has run out (FR-GEST-06,
- * DESIGN §4.6). Clearing notifications (#10), sorting A–Z and resetting the
- * layout (#18) join this.
+ * DESIGN §4.6). Sorting A–Z and resetting the layout (#18) join this.
  */
 sealed interface Destructive {
     /** "Remove folder": its apps go back into the grid in its place (FR-FOLD-07). */
     data class RemoveFolder(val folder: FolderId) : Destructive
+
+    /**
+     * "Clear notifications": dismisses [refs], the dismissible notifications
+     * shown when it was chosen, as they were then (FR-EVT-06).
+     */
+    data class ClearNotifications(val refs: Set<NotificationRef>) : Destructive
 }
 
 /**

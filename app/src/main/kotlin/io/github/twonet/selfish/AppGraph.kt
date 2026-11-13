@@ -34,7 +34,7 @@ class AppGraph(context: Context) {
         osSettings = AndroidOsSettings(context, foreground),
         // Optional features (AR-09): deleting one means deleting its
         // package and this line, and passing its Disabled object instead.
-        notificationSource = ListenerNotificationSource(context),
+        notificationSource = ListenerNotificationSource(context, foreground),
         usageSource = UsageStatsSource(context),
     )
 

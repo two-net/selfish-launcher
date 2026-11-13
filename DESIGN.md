@@ -166,6 +166,7 @@ domain/src/main/kotlin/…/domain/
   wallpaper/  WallpaperPolicy, MarketResolver, Crop
   theme/      ThemeResolver, HighlightColor, Contrast
   search/     TextNormalizer, SearchRanker
+  events/     NotificationGroups
   remorse/    RemorseQueue
   persist/    VersionedDocument, LenientListSerializer, LayoutDoc, SettingsDoc,
               WallpaperIndexDoc (#14), saveTo (the savers)
@@ -185,10 +186,12 @@ app/src/main/kotlin/…/
   ui/tokens/      Colors (incl. glass), Type, Spacing, Sizes, Shapes, Motion,
                   LauncherTheme (AR-04, UI-08)
   ui/LauncherScreen.kt  the root: every surface, drawn back to front (§6.2)
-  ui/motion/      LayerGestureController, GestureMath, WindowBlur, reduced motion
+  ui/motion/      LayerGestureController, GestureMath, SidewaysClaims, WindowBlur,
+                  reduced motion
   ui/components/  Pressable, LauncherText, Glass, PageHeader, AppIcon, AppIcons, Cover,
                   FolderIcon, PressGlow, PulleyMenu, ContextMenu, RemorseBanner,
-                  GestureHint, ReorderableGrid
+                  GestureHint, ReorderableGrid, SwipeToDismiss, ClockFormat,
+                  WallpaperImages
   ui/home/  ui/grid/  ui/folder/  ui/search/  ui/events/  ui/topmenu/
   ui/settings/  ui/wallpaper/  ui/onboarding/
 ```
@@ -208,7 +211,9 @@ app/src/main/kotlin/…/
 - **Presentation renders state and sends actions.** It collects `state` with `collectAsStateWithLifecycle()` and keeps only transient UI state: drag progress while a gesture is in flight, scroll positions, cursor position and running animations. When a drag settles, it dispatches, for example, `Action.LayerSettled(Layer.AppGrid)`. When the Domain changes the layer (for example on a Home press), Presentation animates toward the new target.
 - **Ports push changes as `Flow`s**: catalog changes, the system dark theme, the animator scale, notifications and access revocations. The store collects them and turns them into actions.
   - The clock (`OsSettings.clock`) is collected only between `HomeShown` and `HomeHidden`, so its time-tick receiver is registered only while the launcher is on screen (FR-HOME-02, NFR-PWR-02).
-- **One query: icons.** Icons are pixels to draw, not launcher state, and 300 of them would not fit in state comfortably (NFR-PERF-05). So the store also offers `icon(app, sizePx)`, which asks the `AppCatalog` port and returns plain ARGB pixels (`AppIconImage`). Presentation turns them into bitmaps and caches them (§5.1). The state carries each app's `version`, so an updated app's icon is loaded again (FR-GEN-06).
+  - So is notification access (`NotificationSource.granted`), which the system announces with no broadcast. Collecting it again on every `HomeShown` checks it again, for example on the return from the system's access screen. The notifications themselves are collected only while the launcher is on screen and they are on (§5.5). *Built in #10.*
+- **Two queries: icons and wallpaper images.** Icons are pixels to draw, not launcher state, and 300 of them would not fit in state comfortably (NFR-PERF-05). So the store also offers `icon(app, sizePx)`, which asks the `AppCatalog` port and returns plain ARGB pixels (`AppIconImage`). Presentation turns them into bitmaps and caches them (§5.1). The state carries each app's `version`, so an updated app's icon is loaded again (FR-GEN-06).
+  - `wallpaperImage(id)` returns a cached wallpaper image's bytes from `LocalStorage`. Presentation's `WallpaperImages` decodes them off the main thread, at the smallest power-of-two sample that covers the Events card's thumbnail (FR-EVT-03). *Built in #10.*
 - **Persistence.** After each layout or settings change, the store writes the affected document through `LocalStorage`. Writes run on a background dispatcher, consecutive writes are merged, and every write is atomic (§5.3).
   - **Restore first.** `start()` subscribes to the ports at once, because a scheduled run emitted before anyone listens is lost. It holds their events back until `Action.Restored(layout, settings)` has been dispatched, so every feature sees the saved state. `LauncherState.restored` is false until then, and Home shows only the wallpaper (FR-GEN-08).
   - **No saved layout is a first run.** `LauncherState.layout` stays `null` when nothing usable was saved, until the first-run layout is built (§4.2).
@@ -259,6 +264,10 @@ Overlays: Folder(id) · ContextMenu(target)     (stacked over a layer)
 | `Action.LayerSettled(layer)` is where a released swipe, or the screen reader's "Show apps", ends up (§6.3). On the current layer it changes nothing; otherwise it moves there and closes the overlays, which belong to the layer they were opened on. Hiding the launcher leaves the App Grid open, so Back from an app launched from it returns there; a Home press closes it. | FR-GRID-01, FR-GRID-04, FR-GEN-03 |
 | `Search(query)` sets `LauncherState.query`, only on the App Grid, and closes any context menu, because the results replace the grid's items. The grid shows results while the query has something besides spaces in it (`searching`). *Built in #9.* | FR-SRCH-01 |
 | Closing the App Grid clears the search query and hides the keyboard. The reducer keeps the query empty whenever the layer isn't the App Grid, whichever action left it. Hiding the launcher keeps it, so Back from an app launched from the results returns to them. The keyboard is not an overlay: the system's input method takes Back to hide itself before the launcher sees it, so the keyboard stays with the search field as transient UI state (§6.4), as it does for a folder name being edited. | FR-SRCH-05 |
+| `Layer.Events` is reached like the App Grid, by `LayerSettled` from a released sideways swipe or the screen reader's "Show events", and Back and Home close it by the rules above. *Built in #10.* | FR-EVT-01, FR-GEN-03, FR-GEN-04 |
+| `LauncherState.wallpaper` is the image of the day in use, a `WallpaperEntry` with its image, title, copyright text and link; #14 fills it in. `OpenWallpaperDetails` moves to `Layer.WallpaperDetails`, which #14 draws, only while there is an entry, so neither the Events card nor its menu item appear before then. `OpenLink(url)` emits `Effect.OpenScreen(Link)`. *Built in #10.* | FR-EVT-03, FR-EVT-06, FR-WP-10 |
+| Notifications are on (`notificationsOn`) while "Notifications in Events" is on *and* access is granted (`notificationAccess`, `null` until first checked). `TurnOnNotifications` turns the setting on only with access granted; without it, it sets `awaitingNotificationAccess` and emits `Effect.RequestNotificationAccess`, and access granted while waiting turns the setting on. After every action, access known to be missing turns the setting off (a revocation, even one made while the process was dead), and with notifications off the list, the dismissals waiting for confirmation and any pending clear are dropped. The setting is never on while access is known to be missing, so these rules can't undo "Turn on". `HideNotificationsCard` sets `Settings.notificationsCardDismissed`, saved with the settings. *Built in #10.* | FR-EVT-04, FR-EVT-07, FR-ONB-04, NFR-PRIV-05 |
+| `NotificationsChanged(items)` replaces the list while notifications are on. `DismissNotification(key)` removes a dismissible one at once, records its `NotificationRef` (key and post time) in `dismissing` until the system reports it gone, and emits `Effect.DismissNotifications`; one updated meanwhile has a new post time, and shows. `OpenNotification(key, bounds)` is a launch, under the launch guard. `ClearNotifications` starts a remorse timer for the refs of the dismissible notifications shown at that moment, so one that arrives during the countdown isn't cleared. *Built in #10.* | FR-EVT-04, FR-EVT-05, FR-EVT-06, FR-GEN-05 |
 | `Settings` holds every setting from SRS §4.13, with the SRS defaults (for example Appearance = System, Daily Bing wallpaper = On). | FR-SET-01 to FR-SET-17, FR-THM-02 |
 
 ### 4.2 Layout rules
@@ -352,9 +361,9 @@ With "Covers show: Recently used" (FR-HOME-10, C), Home shows `UsageSource.recen
 
 ### 4.6 Remorse queue
 
-- `RemorseQueue` holds at most one pending destructive action, `LauncherState.remorse`: a `Destructive` action and the number of its timer. *Built in #8 for removing a folder;* #10 and #18 add their actions.
+- `RemorseQueue` holds at most one pending destructive action, `LauncherState.remorse`: a `Destructive` action and the number of its timer. *Built in #8 for removing a folder; #10 added clearing notifications;* #18 adds its actions.
 - Starting one emits `Effect.DispatchAfter(5 s, RemorseDue(n))`. The timer fires in the store's scope, so the action runs even after the user navigates away. A `RemorseDue` whose number isn't the pending one's is stale and does nothing, as with launch timeouts.
-- A second destructive action commits the pending one right away.
+- A second destructive action commits the pending one right away, with its effects: committing returns the next state and effects, as clearing notifications needs `Effect.DismissNotifications`.
 - Nothing changes until the action is committed, so cancelling just drops it. The pending action isn't saved: if the process dies first, nothing is lost.
 - The reducer keeps no clock, so the banner's countdown runs from when it appears, as transient UI state (§6.4), rather than toward a deadline held in state.
 - Used for clearing notifications, removing a folder, sorting A–Z and resetting the layout.
@@ -393,7 +402,7 @@ Each external dependency from AR-03 has exactly one port and one adapter.
 | `BingFeed` | `HttpsBingFeed` | `HttpsURLConnection` and the kotlinx-serialization parser (§5.2) | IF-WP-01 to IF-WP-06, FR-WP-02 |
 | `WallpaperScheduler` | `JobSchedulerWallpaperScheduler` with `WallpaperJobService` | `JobScheduler` (§5.4) | FR-WP-02, FR-WP-06, NFR-PWR-01, NFR-PWR-02, AR-06 |
 | `OsSettings` | `AndroidOsSettings` | **Home role:** `RoleManager.isRoleHeld` and `createRequestRoleIntent(ROLE_HOME)`, started *for result* over the visible Activity, because the prompt identifies its caller through `getCallingPackage()`. **Theme:** `Configuration.uiMode` via `ComponentCallbacks`. **Motion:** `Settings.Global.ANIMATOR_DURATION_SCALE` via a `ContentObserver`. **Network and power:** `ConnectivityManager` (metered status, `restrictBackgroundStatus`), `PowerManager.isPowerSaveMode`. **Clock:** time-tick, time-zone and 12/24-hour changes. | FR-THM-03, FR-ANIM-15, FR-WP-06, FR-GEN-02, FR-HOME-02, NFR-L10N-02 |
-| `NotificationSource` (optional) | `ListenerNotificationSource` with `LauncherNotificationListener` | `NotificationListenerService` (active notifications, dismissal, content intents), `NotificationManager.isNotificationListenerAccessGranted` | FR-EVT-04 to FR-EVT-07, FR-GRID-11, NFR-PRIV-05 |
+| `NotificationSource` (optional) | `ListenerNotificationSource` with `LauncherNotificationListener` | `NotificationListenerService` (active notifications, ranking, dismissal, content intents), `NotificationManager.isNotificationListenerAccessGranted`, the listener's access screen in `Settings` | FR-EVT-04 to FR-EVT-07, FR-GRID-11, FR-ONB-04, NFR-PRIV-05 |
 | `UsageSource` (optional) | `UsageStatsSource` | `UsageStatsManager.queryEvents`, `AppOpsManager.unsafeCheckOpNoThrow` | FR-HOME-10 |
 
 **Implementation notes**
@@ -408,6 +417,15 @@ Each external dependency from AR-03 has exactly one port and one adapter.
   - The root view comes from `ForegroundActivity`, a holder that `MainActivity` fills in `onCreate` and clears in `onDestroy`, through `AppGraph.attach` and `detach`, so it never imports `:adapters`. It keeps a weak reference.
   - The same holder supplies the Activity for the default-Home prompt (FR-GEN-02), the Activity context for starting intents and the window token for wallpaper offsets.
 - **Default apps** (FR-HOME-07). `defaultApps()` resolves `DIAL`, `SENDTO smsto:`, `VIEW https:` (browsable) and `STILL_IMAGE_CAMERA` with `MATCH_DEFAULT_ONLY`, each on its own. The result counts only if it is a launchable app of the main profile, so the system's resolver, which answers when there are several handlers and no default, is skipped. `LauncherAppsCatalogTest` compares the results with `cmd package resolve-activity`.
+- **Links** (FR-EVT-03). `open(SystemScreen.Link)` starts `ACTION_VIEW` with `CATEGORY_BROWSABLE` over the visible launcher, only for `https` links, and does nothing without a browser. *Built in #10;* the system Settings app and the usage access screen arrive with #11 and #19.
+- **Notifications** (FR-EVT-04 to FR-EVT-07). *Built in #10.*
+  - The system binds `LauncherNotificationListener` once the user grants access. It only reports that it connected or disconnected and *that* something changed (a counter); `ListenerNotificationSource` reads the active notifications and the ranking from it on each change, while the store collects them. Nothing is kept between reads (NFR-PRIV-05).
+  - `granted` asks `isNotificationListenerAccessGranted` on every collection and whenever the listener connects or disconnects; a disconnect alone isn't a revocation, because the system also rebinds listeners.
+  - Which ones are listed is pure (`NotificationRules`, tested on the JVM): not the launcher's own, not those the system hides (a suspended app, or Do Not Disturb keeping them out of lists), not those with neither a title nor text, and not a group's summary while its notifications are listed. Ongoing ones are listed but can't be dismissed. Newest first.
+  - A notification's app is its package and the profile's serial number; the domain finds its catalog entry (`NotificationGroups`). Its name comes from `LauncherApps.getApplicationInfo`, so an app without a launcher activity is still named, or else the package.
+  - `open` sends the content intent with the launcher's right to start activities while it is visible (`setPendingIntentBackgroundActivityStartMode`: `ALLOW_IF_VISIBLE` on API 36+, `ALLOWED` on 34–35), growing from the tapped row, and then cancels an auto-cancelling notification as the shade would. Without an intent, it opens the app.
+  - `dismiss(refs)` cancels only those that are dismissible and unchanged since they were shown (same post time), so a message that arrives under the same key during the remorse countdown isn't cleared unseen.
+  - `requestAccess` opens the listener's own detail screen on API 30+ (`ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS`), else the list of listeners. It lives in this port, not in `AppCatalog.open`, because only this adapter knows the listener, which keeps it removable (AR-09).
 - **Cropping is done by the launcher** (FR-WP-04). The image is decoded only inside the crop rectangle and handed to the system at the screen's exact aspect ratio, so OEM handling of crop hints doesn't matter (R-5). When the source is wide enough, the crop keeps up to 5% extra width for the parallax of FR-ANIM-14.
 
 ### 5.2 Network policy (Bing feed)
@@ -451,8 +469,8 @@ URL building, the allowlist and redirect decision, the counting stream and the J
 ### 5.5 Optional features (AR-09)
 
 - `NotificationSource` and `UsageSource` each have a `Disabled` implementation, with empty flows and `granted = false`.
-  - The store uses the real adapter only while the setting is on and access is granted.
-  - When access is revoked, the store switches back to `Disabled` and turns the setting off (FR-ONB-04).
+  - The store uses the real adapter only while the setting is on and access is granted: it collects notifications only then (and while the launcher is shown), and sends opening and dismissing to `Disabled` otherwise. *Built in #10 for notifications.*
+  - When access is revoked, the store turns the setting off (FR-ONB-04, §4.1).
 - App shortcuts (FR-HOME-09, FR-GRID-10) are checked with `hasShortcutHostPermission()` and return an empty list when unavailable.
 - Each optional adapter is a separate package that no other adapter references. Deleting it, together with its line in `AppGraph`, leaves a working app.
 - Notification contents stay in memory, in the current list only. They are never written, logged or sent anywhere (NFR-PRIV-05, SRS §8).
@@ -511,15 +529,15 @@ Drawing order, back to front:
 8. Remorse banner
 9. Tutorial hints
 
-Each layer's position is a single `Animatable<Float>` progress from 0 to 1, owned by the gesture controller. The Domain's `LauncherState` says which layer is the target.
+Each way out of Home is a *track* with its own `Animatable<Float>`, owned by the gesture controller: the App Grid's progress from 0 to 1, and the Events carousel (§6.3). The Domain's `LauncherState` says which layer is the target.
 
 ### 6.3 Gesture and motion (AR-04)
 
-One `LayerGestureController` in `ui/motion/` drives every view transition. #7 builds it for the Home ⇄ App Grid axis; Events (#10) and the Top Menu (#11) add theirs.
+One `LayerGestureController` in `ui/motion/` drives every view transition. #7 built it for the Home ⇄ App Grid axis, and #10 made it one `Track` per way out of Home and added Events'. The Top Menu (#11) adds a track and its rows in `GestureMath.route`; nothing else changes.
 
 | Behavior | Implementation | Serves |
 |---|---|---|
-| Recognition | `Modifier.layerGestures` on the root, which never moves, watches each touch in the Initial pass, before the elements under it. A touch that starts outside the system gesture insets, on a resting layer, is taken over once it passes the platform touch slop *before* the long-press timeout, locked to its dominant axis, in a direction the layer owns. From Home: up opens the App Grid (unless Home's covers can still scroll), down opens the Top Menu, sideways opens Events. Until then, taps, scrolling and long-presses reach the elements as usual; a long-pressed item keeps its touch for dragging. Taking over at the root, rather than through nested scrolling, keeps distances and the release velocity in screen coordinates while the surfaces slide. | FR-GRID-01, FR-EVT-01, FR-TOP-01, FR-GEST-04 |
+| Recognition | `Modifier.layerGestures` on the root, which never moves, watches each touch in the Initial pass, before the elements under it. A touch that starts outside the system gesture insets, on a resting layer, is taken over once it passes the platform touch slop *before* the long-press timeout, locked to its dominant axis, in a direction the layer owns, as the pure `GestureMath.route` decides. From Home: up opens the App Grid (unless Home's covers can still scroll), down opens the Top Menu (#11), sideways either way opens Events. On Events, sideways either way returns to Home. Until then, taps, scrolling and long-presses reach the elements as usual; a long-pressed item keeps its touch for dragging. Taking over at the root, rather than through nested scrolling, keeps distances and the release velocity in screen coordinates while the surfaces slide. | FR-GRID-01, FR-EVT-01, FR-TOP-01, FR-GEST-04 |
 | Tracking | Progress = drag distance ÷ layer travel, 1:1 from recognition. | FR-GEST-01 |
 | Release | Complete if progress ≥ 0.30, or if the release velocity toward the target is at least the platform minimum fling velocity. Otherwise return to the start (peek). | FR-GEST-02, AC-05 |
 | Settling | `spring(dampingRatio = 1f)`, which is critically damped, seeded with the release velocity. | §4.9 tokens |
@@ -527,8 +545,9 @@ One `LayerGestureController` in `ui/motion/` drives every view transition. #7 bu
 | App Grid close | The same take-over: while the grid can't scroll back any further, a downward swipe goes to the controller instead of the list. | FR-GRID-04 |
 | Open folder | While a folder is open, resting layers take no swipes, so a downward pull on the panel reaches its pulley menu instead of closing the grid. | FR-FOLD-07 |
 | Layer changes from the store | When the store changes the layer, for example on a Home or Back press, the controller animates there. A Home press that brings the launcher back from another app arrives before its window has focus; then it jumps, so the grid isn't seen closing. | FR-GEN-03, FR-GEN-04 |
-| Events | Sideways swipes that start on a dismissible notification go to that notification instead. | FR-EVT-05 |
-| Dim and blur | Follow App Grid progress. Home slides up out of the way as the grid slides in, as one sheet. | FR-ANIM-01 |
+| Events carousel | A two-page carousel that wraps around, measured in screen widths: Home rests on even numbers and Events on odd ones, and a finger moving left counts up. So the content follows the finger, Events comes in from whichever side it is pushed toward, and either swipe on Events brings Home back. `GestureMath.homeShift` and `eventsShift` place the two pages; Home changes sides only while it is out of view. After a settle the position goes back near 0 by whole turns (`normalize`), which looks the same. A store-driven change, such as Back, sends Events out the way it came in (`carouselRest`); opened without a finger, by the screen reader, it comes in from the end side of the layout direction. *Built in #10.* | FR-EVT-01, FR-GEN-04 |
+| Events | Sideways swipes that start on a dismissible notification go to that notification instead. Each one registers its layout coordinates in the controller's `SidewaysClaims`, and the root asks where a touch started before taking a sideways swipe on Events. The bounds are measured when asked, so a scrolled list is never out of date. *Built in #10.* | FR-EVT-05 |
+| Dim and blur | The dim follows App Grid progress, or how much of Events is in view, whichever is more; the blur follows the App Grid only. Home slides up out of the way as the grid slides in, as one sheet, and sideways as Events comes in. | FR-ANIM-01 |
 | Reduced motion | When the system animator scale is 0 or Animations is set to Reduced, settles and enter/exit animations become snaps or fades of at most 100 ms. Drags still follow the finger. | FR-ANIM-15, NFR-A11Y-05 |
 
 The release decision, direction lock, rubber band and pull-depth mapping are pure functions (`GestureMath`), unit-tested on the JVM. Thresholds, durations, easings and springs are defined once, in `ui/tokens/Motion.kt`.
@@ -537,7 +556,7 @@ The release decision, direction lock, rubber band and pull-depth mapping are pur
 
 | Component | Behavior | Serves |
 |---|---|---|
-| `PulleyMenu` | *Built in #8 for folders.* A downward pull at the top of a page is taken over like a swipe (§6.3): watched before the page's elements, and taken once it passes the slop before the long-press timeout, so taps, scrolling and long-presses still work. The pull follows `GestureMath.rubberBand`, which resists more the further it goes, up to one item beyond the last. The items appear one at a time above the page, the first nearest it, and the page grows by the pull. Each row is 48 dp, or a header line if that is taller; item = ⌊pull ÷ row⌋ − 1, none before the first. Each change of item plays a tick haptic (`CLOCK_TICK`, or `SEGMENT_TICK` on API 34+), unless Haptic feedback is Off. Releasing selects the item, which flashes in the highlight color (header size, so 3:1 is enough) for the Short duration before it runs; releasing before the first item cancels. A short bar at the top shows that the menu exists. `pulleyActions` gives the items to the page header as accessibility actions. | FR-GEST-05, FR-ANIM-09, FR-AMB-04 |
+| `PulleyMenu` | *Built in #8 for folders; #10 used it for Events.* A downward pull at the top of a page is taken over like a swipe (§6.3): watched before the page's elements, and taken once it passes the slop before the long-press timeout, so taps, scrolling and long-presses still work. The pull follows `GestureMath.rubberBand`, which resists more the further it goes, up to one item beyond the last. The items appear one at a time above the page, the first nearest it, and the page grows by the pull. Each row is 48 dp, or a header line if that is taller; item = ⌊pull ÷ row⌋ − 1, none before the first. Each change of item plays a tick haptic (`CLOCK_TICK`, or `SEGMENT_TICK` on API 34+), unless Haptic feedback is Off. Releasing selects the item, which flashes in the highlight color (header size, so 3:1 is enough) for the Short duration before it runs; releasing before the first item cancels. A short bar at the top shows that the menu exists. `pulleyActions` gives the items to the page header as accessibility actions. | FR-GEST-05, FR-ANIM-09, FR-AMB-04 |
 | `ContextMenu` | A full-width item inserted after the pressed item's row. `animateItem()` pushes later rows down. Dragging the lifted icon closes the menu and starts a move. When it opens below the visible rows, its list scrolls just enough to show it. A disabled item explains itself, as "Add to Home" does on a full Home. `Modifier.onUnhandledTap` closes it on a tap that nothing else handled. | FR-GRID-06, FR-ANIM-08, FR-HOME-05 |
 | `ReorderableGrid` | Long-press lifts the item to 110% with a shadow, and the other items reflow with `animateItem()`. The touch is measured inside the lifted item's scale, so each move is scaled back by it and the item stays under the finger (fixed in #8). The order while dragging is transient; only the drop reaches the store, as the item's new index. The lifted item's context menu is a full-span item after its row. *Built in #6 for Home's covers;* #7 added, for the App Grid: a fixed full-width first row (the search field); auto-scrolling while the dragged item is within 64 dp of the top or bottom, faster the deeper it is, with its slot following the finger and the item pinned so it stays composed; and, where the caller allows it, dropping onto the central half of another item. There the target grows to show it will take the drop; around that center, the dragged item takes the other's place only after resting for 250 ms, so passing over an app doesn't push it away. *#8 added* a `DragHandoff` between two grids. Once the dragged item's center leaves the giving grid's area (a folder's panel), that grid hides the item, keeps it composed so it keeps the touch, and forwards the rest of the touch. The receiving grid (the App Grid) lifts the item under the finger as soon as it is among its items; the store has put it at the visible item nearest the finger. This is owned code, because the rules are launcher-specific (§7). | FR-HOME-06, FR-GRID-05, FR-GRID-07, FR-GRID-08, FR-FOLD-05, FR-ANIM-05, FR-ANIM-06 |
 | `Cover` | A portrait glass card with the app's icon and name, read as the app's name. | FR-HOME-03, NFR-A11Y-01 |
@@ -551,6 +570,8 @@ The release decision, direction lock, rubber band and pull-depth mapping are pur
 | `PressGlow` | A Compose `Indication` that draws a highlight-color glow on the first frame of a press and fades it out over the Short duration. | FR-ANIM-04 |
 | Folder panel | *Built in #8* (`ui/folder/FolderPanel`), as an overlay of the App Grid, which hosts it so the two share a `DragHandoff`. A dim that closes it when tapped covers the grid, and on it a glass panel holds the folder's name (`EditablePageHeader`) and its apps in a `ReorderableGrid`, in a `PulleyMenu` with Rename and Remove folder. It opens centered and then keeps its top, growing downward, so an app's menu opening in it or a pull never moves the app under the finger. It grows from the folder's icon to its own bounds by scale and translation in a `graphicsLayer`, over the Medium duration, and shrinks back into it. While it closes, and while an app dragged out of it is still under the finger, it keeps showing the folder as it was. Closed by a drag-out, it only fades, because the touch is still measured in its coordinates, which shrinking would stretch. | FR-FOLD-03, FR-FOLD-05, FR-ANIM-07 |
 | Search field | *Built in #9* (`ui/search/SearchField`). The App Grid's first row, a `BasicTextField` on glass with the placeholder inside it. Compose has no hint text for screen readers and drops a text field's own content description, so the placeholder, exposed as the field's child, is its only label; how TalkBack reads it is a review item. Each change of its text dispatches `Search`. The field keeps its own editing buffer (cursor and composing text) as transient UI state, because a buffer fed back from the store's collected state could lose keystrokes. The action key is Go, and launches the first result, ranked from the field's own text. Autocorrection is off. While searching, the grid shows the results in the same `ReorderableGrid`, so the field keeps its focus and keyboard, and results fade and move over the Short duration (`Motion.results`). A result opens its menu on a long-press but isn't dragged, because its place among the results says nothing about its place in the grid. "No apps found" appears beneath the field, announced through a live region. When the App Grid closes, the field empties and gives up its focus, which hides the keyboard. When the launcher stops, for example for an app launched from the results, it gives up its focus too, watched on the lifecycle (`LifecycleEventEffect(ON_STOP)`), because the store's state isn't collected while the launcher is stopped. | FR-GRID-03, FR-SRCH-01, FR-SRCH-03, FR-SRCH-04, FR-SRCH-05 |
+| `SwipeToDismiss` | *Built in #10.* Content that a sideways swipe dismisses, such as a notification in Events. Recognized like the launcher's swipes (§6.3): watched before the content, and taken once it moves sideways past the slop before the long-press timeout; a vertical move is left to the list and the pulley menu. It follows the finger and fades as it goes; released past 30% of its width or flung, it slides out and then dismisses, otherwise it springs back with the release spring. While enabled, it registers in `SidewaysClaims`, so the swipe isn't taken as one between views. | FR-EVT-05, FR-GEST-01 |
+| Events page | *Built in #10* (`ui/events/EventsScreen`). A `PulleyMenu` around a list: today's date as the `PageHeader`, the wallpaper card, the notifications card, the notifications grouped by app, or "No new events". The **wallpaper card** is glass with the image's thumbnail (`WallpaperImages`, a glass placeholder until it loads), "Today's wallpaper", the title and copyright text, and "Learn more"; tapping the card opens Wallpaper details. The **notifications card** explains the feature, says notifications are never saved or sent, and offers "Turn on" and "Hide". Each **group** shows the app's `AppIcon` (its initial on glass for an app the catalog doesn't list) and name; each **notification** is a glass row with its title, time (the time of day if today, else the date) and up to three lines of text, inside a `SwipeToDismiss` when dismissible, with "Dismiss" as an accessibility action. Rows waiting to be cleared are faded. Items fade in and out and move over the Medium duration. | FR-EVT-02 to FR-EVT-08, FR-WP-10 |
 | `GestureHint` | A glowing touch point that traces a gesture in the tutorial and in contextual hints. | FR-ANIM-13, FR-ONB-02 |
 
 **Haptics**
@@ -611,7 +632,7 @@ The release decision, direction lock, rubber band and pull-depth mapping are pur
 
 | Feature | Implementation | Serves |
 |---|---|---|
-| Gesture alternatives | Home exposes custom accessibility actions: "Show apps" (built in #7), "Show events" and "Show top menu". Each pulley menu exposes its items as custom actions on its page header (built in #8 for folders). The remorse banner is a button labeled "Cancel ⟨action⟩" and is announced through a live region. | FR-GEST-09, NFR-A11Y-02, AC-10 |
+| Gesture alternatives | Home exposes custom accessibility actions: "Show apps" (built in #7), "Show events" (built in #10) and "Show top menu". Events exposes "Show Home", and each dismissible notification "Dismiss" (#10). Each pulley menu exposes its items as custom actions on its page header (built in #8 for folders, #10 for Events). The remorse banner is a button labeled "Cancel ⟨action⟩" and is announced through a live region. | FR-GEST-09, NFR-A11Y-02, AC-10 |
 | Labels | Covers and icons read the app's name. Folders read "Folder, ⟨name⟩, ⟨n⟩ apps". | NFR-A11Y-01 |
 | Large text | Grid labels can wrap to two lines at large font scales. Layouts are tested at the largest system font scale for overflow. | FR-GRID-02, NFR-A11Y-04 |
 | Contrast | §6.5 | NFR-A11Y-03 |
@@ -619,7 +640,7 @@ The release decision, direction lock, rubber band and pull-depth mapping are pur
 ### 6.8 Localization
 
 - All user-visible text is in `app/src/main/res/values/strings.xml`, with English as the source language. Counts use plurals (NFR-L10N-01).
-- The Home clock and the Events header format with ICU skeletons (`android.icu.text.DateFormat.getInstanceForSkeleton`, which is what `DateFormat.getBestDateTimePattern` uses), with the 12- or 24-hour skeleton chosen by `DateFormat.is24HourFormat` in the adapter (FR-HOME-02, FR-EVT-02, NFR-L10N-02).
+- The Home clock, the Events header and notification times format with ICU skeletons (`ui/components/ClockFormat`) (`android.icu.text.DateFormat.getInstanceForSkeleton`, which is what `DateFormat.getBestDateTimePattern` uses), with the 12- or 24-hour skeleton chosen by `DateFormat.is24HourFormat` in the adapter (FR-HOME-02, FR-EVT-02, NFR-L10N-02).
 - Compose mirrors layouts in right-to-left languages, and headers use `TextAlign.End` (UI-02, NFR-L10N-03). Sideways gestures already work in both directions.
 
 ---
@@ -713,7 +734,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 |---|---|---|
 | FR-GEN-01 | U, R | `ManifestRulesTest`: label and adaptive icon. Name and original icon appear in the app list, the Home chooser and About. |
 | FR-GEN-02 | U, I | `LauncherReducerTest`, `LauncherStoreTest`: the offer. `ManifestRulesTest`: the Home filter. `SystemIntegrationTest`: first launch while not the default Home app shows the role prompt. |
-| FR-GEN-03, FR-GEN-04 | U, I | `LauncherReducerTest`: Back and Home order. `SystemIntegrationTest`: Home and Back on Home, and with the App Grid open; with Events and the Top Menu once #10 and #11 add them. |
+| FR-GEN-03, FR-GEN-04 | U, I | `LauncherReducerTest`, `EventsReducerTest`: Back and Home order. `SystemIntegrationTest`: Home and Back on Home, and with the App Grid or Events open; with the Top Menu once #11 adds it. |
 | FR-GEN-05 | U | `LauncherReducerTest`, `LauncherStoreTest`: launch guard. |
 | FR-GEN-06 | U, A, R | `CatalogReconcilerTest`. `LauncherAppsCatalogTest`: enabling and disabling a stub activity, and every launchable app is listed (R-4). Review item: real installs, updates and uninstalls. |
 | FR-GEN-07 | U, A | `PersistenceTest`: round trip and migrations. `FileStorageTest`: atomic writes. |
@@ -758,9 +779,9 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 
 | Requirements | Level | Verified by |
 |---|---|---|
-| FR-EVT-01, FR-EVT-02, FR-EVT-03 | I | `EventsTest`: sideways navigation; date header; wallpaper card and "Learn more" intent. |
-| FR-EVT-04, FR-EVT-05 | A, I | `NotificationSourceTest`: posts and cancels test notifications. `EventsTest`: grouping and swipe-to-dismiss. |
-| FR-EVT-06, FR-EVT-07, FR-EVT-08 | I | `EventsTest`: pulley menu with remorse; notification-access card; "No new events". |
+| FR-EVT-01, FR-EVT-02, FR-EVT-03 | U, I | `GestureMathTest`: the carousel, settling, who takes a swipe. `EventsReducerTest`: Wallpaper details only with an entry; "Learn more". `EventsTest`: left and right both ways, peek, system gesture areas, the screen reader's way; the date header; the wallpaper card, "Learn more" and Wallpaper details. `NavigationTest`: catching a sideways transition. `SystemIntegrationTest`: Back and Home close Events. |
+| FR-EVT-04, FR-EVT-05 | U, A, I | `NotificationRulesTest`: which are listed, newest first, and what a dismissal cancels. `NotificationGroupsTest`. `NotificationSourceTest`: posts, updates and cancels real notifications through the listener, opens one and dismisses. `EventsReducerTest`, `LauncherStoreTest`: listed only while on; optimistic dismissal. `EventsTest`: grouping, opening, swipe-to-dismiss and the "Dismiss" action, and sideways swipes elsewhere switching views. |
+| FR-EVT-06, FR-EVT-07, FR-EVT-08 | U, I | `EventsReducerTest`, `LauncherStoreTest`: clearing what was shown, after the remorse timer; turning on with and without access. `EventsTest`: pulley menu with remorse (AC-06) and as header actions; the notifications card's "Turn on" and "Hide"; "No new events". |
 
 **Top Menu (SRS §4.7)**
 
@@ -773,9 +794,9 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 
 | Requirements | Level | Verified by |
 |---|---|---|
-| FR-GEST-01, FR-GEST-02, FR-GEST-03, FR-GEST-04 | U, I | `GestureMathTest`: threshold, fling, direction lock. `NavigationTest`: 1:1 tracking, peek, complete, catching mid-flight, ignoring system gesture areas (AC-05). |
-| FR-GEST-05 | U, I, R | `GestureMathTest`: rubber band, pull depth → item, every item within reach. `FolderTest`: a slow pull chooses the second item. `EventsTest` (#10): pulley selection and cancel. Review item: the tick haptics. |
-| FR-GEST-06 | U, I | `RemorseQueueTest`. `LauncherReducerTest`, `LauncherStoreTest` (virtual time). `FolderTest`: cancel by tapping the banner. `EventsTest` (#10): the same for clearing notifications (AC-06). |
+| FR-GEST-01, FR-GEST-02, FR-GEST-03, FR-GEST-04 | U, I | `GestureMathTest`: threshold, fling, direction lock, settling either way. `NavigationTest`, `EventsTest`: 1:1 tracking, peek, complete, catching mid-flight, ignoring system gesture areas (AC-05). |
+| FR-GEST-05 | U, I, R | `GestureMathTest`: rubber band, pull depth → item, every item within reach. `FolderTest`: a slow pull chooses the second item. `EventsTest`: a slow pull chooses "Clear notifications". Review item: the tick haptics. |
+| FR-GEST-06 | U, I | `RemorseQueueTest`. `LauncherReducerTest`, `LauncherStoreTest` (virtual time). `FolderTest`: cancel by tapping the banner. `EventsTest`: the same for clearing notifications (AC-06). |
 | FR-GEST-07 | R | Long-press uses the system timeout and plays a tick. |
 | FR-GEST-08 | U, R | `HapticsTest`: Off suppresses haptics. Review: follows the system setting. |
 | FR-GEST-09 | I | `AccessibilityTest`: every gesture-only action is reachable as an accessibility action (AC-10). |
@@ -796,7 +817,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 |---|---|---|
 | FR-WP-01, FR-WP-02, FR-WP-03, FR-WP-04, FR-WP-06, FR-WP-07, FR-WP-08, FR-WP-11, FR-WP-12 | U | `WallpaperPolicyTest`, `MarketResolverTest`, `CropTest`. |
 | FR-WP-05, FR-WP-13 | U, A | `WallpaperPolicyTest`. `AndroidSystemWallpaperTest`: applies to home and lock screens; turning Daily off deletes the cache and cancels the job. |
-| FR-WP-09, FR-WP-10 | I | `WallpaperDetailsTest`, `EventsTest`: title, copyright, date, market, last update. |
+| FR-WP-09, FR-WP-10 | I | `WallpaperDetailsTest`: title, copyright, date, market, last update. `EventsTest`: the card's title and copyright. |
 | FR-WP-14 | A | `AndroidSystemWallpaperTest`: rejects truncated, non-image and oversized fixtures. |
 
 **Ambience (SRS §4.11)**
@@ -829,7 +850,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 |---|---|---|
 | FR-ONB-01 | U, I | `LayoutRulesTest`: first-run layout. `OnboardingTest`. |
 | FR-ONB-02, FR-ONB-03 | I | `OnboardingTest`: three steps completed by gestures; skip; replay from Settings. |
-| FR-ONB-04 | U, I | `LauncherStoreTest`: revoked access turns the feature off. `OnboardingTest`: explanation before the request. |
+| FR-ONB-04 | U, A, I | `EventsReducerTest`, `LauncherStoreTest`: revoked access turns the feature off, also when revoked while the launcher wasn't running; "Turn on" asks for access first. `NotificationSourceTest`: access follows the system setting. `EventsTest`: the notifications card explains before asking. `OnboardingTest`: explanation before the request. |
 
 **User interface (SRS §5.1)**
 
@@ -901,7 +922,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 | Requirements | Level | Verified by |
 |---|---|---|
 | NFR-L10N-01 | R | Walkthrough in the `en-XA` pseudolocale shows no untranslated text. |
-| NFR-L10N-02 | I | `HomeTest`, `EventsTest`: 12-hour, 24-hour and non-English locales. |
+| NFR-L10N-02 | I | `HomeTest`: 12-hour, 24-hour and non-English locales. `EventsTest`: the header in the device locale. |
 | NFR-L10N-03 | I | `RtlTest`: mirrored layouts and headers in the `ar-XB` pseudolocale. |
 
 **Compatibility (SRS §6.7)**

@@ -5,6 +5,7 @@ import io.github.twonet.selfish.domain.layout.CatalogReconciler
 import io.github.twonet.selfish.domain.layout.LayoutRules
 import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Layout
+import io.github.twonet.selfish.domain.ports.SystemScreen
 import io.github.twonet.selfish.domain.remorse.Destructive
 import io.github.twonet.selfish.domain.remorse.REMORSE_DELAY
 import io.github.twonet.selfish.domain.remorse.RemorseQueue
@@ -30,12 +31,33 @@ val LAUNCH_TIMEOUT: Duration = 1.seconds
  */
 fun reduce(state: LauncherState, action: Action): Next {
     val next = transition(state, action)
+    val kept = keepRules(next.state)
+    return if (kept === next.state) next else next.copy(state = kept)
+}
+
+/**
+ * Rules that hold after every action, whichever action led there. Returns
+ * [state] itself when they already hold.
+ */
+private fun keepRules(state: LauncherState): LauncherState {
+    var next = state
     // Leaving the App Grid, however it happens, clears its search (FR-SRCH-05).
-    return if (next.state.layer != Layer.AppGrid && next.state.query.isNotEmpty()) {
-        next.copy(state = next.state.copy(query = ""))
-    } else {
-        next
+    if (next.layer != Layer.AppGrid && next.query.isNotEmpty()) next = next.copy(query = "")
+    // Access that is gone, even if it went while the process was dead,
+    // turns the feature off (FR-ONB-04, DESIGN §5.5). The setting only ever
+    // turns on with access granted, so this never undoes "Turn on".
+    if (next.notificationAccess == false && next.settings.notificationsInEvents) {
+        next = next.copy(settings = next.settings.copy(notificationsInEvents = false))
     }
+    // Notifications are kept only while they are shown (NFR-PRIV-05), and a
+    // clear can't run without them.
+    if (!next.notificationsOn) {
+        if (next.notifications.isNotEmpty() || next.dismissing.isNotEmpty()) {
+            next = next.copy(notifications = emptyList(), dismissing = emptySet())
+        }
+        if (next.remorse?.action is Destructive.ClearNotifications) next = next.copy(remorse = null)
+    }
+    return next
 }
 
 private fun transition(state: LauncherState, action: Action): Next = when (action) {
@@ -78,19 +100,7 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
     // One launch at a time: repeated taps while an app is starting are
     // ignored (FR-GEN-05). Launching closes any context menu, so it isn't
     // still open on return.
-    is Action.Launch ->
-        if (state.launching) {
-            Next(state)
-        } else {
-            val launch = state.launches + 1
-            Next(
-                closeContextMenu(state).copy(launching = true, launches = launch),
-                listOf(
-                    Effect.LaunchApp(action.app, action.from),
-                    Effect.DispatchAfter(LAUNCH_TIMEOUT, Action.LaunchTimedOut(launch)),
-                ),
-            )
-        }
+    is Action.Launch -> startLaunch(state) { Effect.LaunchApp(action.app, action.from) }
 
     // A timer from an earlier launch must not end a newer one early.
     is Action.LaunchTimedOut ->
@@ -206,13 +216,8 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
         if (!exists || state.pendingRemoval == action.folder) {
             Next(state)
         } else {
-            val number = state.remorses + 1
-            val started = RemorseQueue.start(state.remorse, Destructive.RemoveFolder(action.folder), number)
-            val committed = started.committed?.let { commit(state, it) } ?: state
-            Next(
-                closeFolder(committed).copy(remorse = started.pending, remorses = number),
-                listOf(Effect.DispatchAfter(REMORSE_DELAY, Action.RemorseDue(number))),
-            )
+            val started = startRemorse(state, Destructive.RemoveFolder(action.folder))
+            started.copy(state = closeFolder(started.state))
         }
     }
 
@@ -220,12 +225,139 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
 
     // A timer whose action was cancelled, or committed early, runs nothing.
     is Action.RemorseDue ->
-        RemorseQueue.due(state.remorse, action.number)?.let { Next(commit(state.copy(remorse = null), it)) } ?: Next(state)
+        RemorseQueue.due(state.remorse, action.number)?.let { commit(state.copy(remorse = null), it) } ?: Next(state)
+
+    // There is nothing to detail before #14 provides the wallpaper.
+    Action.OpenWallpaperDetails ->
+        if (state.wallpaper == null || state.layer == Layer.WallpaperDetails) {
+            Next(state)
+        } else {
+            Next(state.copy(layer = Layer.WallpaperDetails, overlays = emptyList()))
+        }
+
+    is Action.OpenLink -> Next(state, listOf(Effect.OpenScreen(SystemScreen.Link(action.url))))
+
+    // Access granted after "Turn on" sent the user to ask for it turns the
+    // feature on (FR-EVT-07, FR-ONB-04). Losing it turns the feature off,
+    // in keepRules.
+    is Action.NotificationAccessChanged ->
+        if (action.granted && state.awaitingNotificationAccess) {
+            Next(
+                state.copy(
+                    notificationAccess = true,
+                    awaitingNotificationAccess = false,
+                    settings = state.settings.copy(notificationsInEvents = true),
+                ),
+            )
+        } else if (action.granted == state.notificationAccess) {
+            Next(state)
+        } else {
+            Next(state.copy(notificationAccess = action.granted))
+        }
+
+    // Without access, the setting waits for it, so it is never on while
+    // access is known to be missing (FR-ONB-04).
+    Action.TurnOnNotifications ->
+        when {
+            state.notificationsOn -> Next(state)
+            state.notificationAccess == true -> Next(state.copy(settings = state.settings.copy(notificationsInEvents = true)))
+            else -> Next(state.copy(awaitingNotificationAccess = true), listOf(Effect.RequestNotificationAccess))
+        }
+
+    Action.HideNotificationsCard ->
+        if (state.settings.notificationsCardDismissed) {
+            Next(state)
+        } else {
+            Next(state.copy(settings = state.settings.copy(notificationsCardDismissed = true)))
+        }
+
+    // Notifications dismissed here stay hidden until the system reports them
+    // gone; one updated since then is new, and shows (FR-EVT-05).
+    is Action.NotificationsChanged -> {
+        if (!state.notificationsOn) {
+            Next(state)
+        } else {
+            val present = action.items.mapTo(HashSet()) { it.ref }
+            val dismissing = state.dismissing.filterTo(HashSet()) { it in present }
+            val shown = if (dismissing.isEmpty()) action.items else action.items.filter { it.ref !in dismissing }
+            if (shown == state.notifications && dismissing == state.dismissing) {
+                Next(state)
+            } else {
+                Next(state.copy(notifications = shown, dismissing = dismissing))
+            }
+        }
+    }
+
+    // Opening a notification is a launch, so a second tap waits (FR-GEN-05).
+    is Action.OpenNotification ->
+        if (state.notifications.none { it.key == action.key }) {
+            Next(state)
+        } else {
+            startLaunch(state) { Effect.OpenNotification(action.key, action.from) }
+        }
+
+    is Action.DismissNotification -> {
+        val item = state.notifications.firstOrNull { it.key == action.key && it.clearable }
+        if (item == null) {
+            Next(state)
+        } else {
+            Next(
+                state.copy(notifications = state.notifications - item, dismissing = state.dismissing + item.ref),
+                listOf(Effect.DismissNotifications(setOf(item.ref))),
+            )
+        }
+    }
+
+    // What is cleared is what was shown when it was chosen (FR-EVT-06).
+    Action.ClearNotifications -> {
+        val refs = state.clearable.mapTo(LinkedHashSet()) { it.ref }
+        if (!state.notificationsOn || refs.isEmpty()) Next(state) else startRemorse(state, Destructive.ClearNotifications(refs))
+    }
+}
+
+/**
+ * Starts a launch whose [effect] opens something, unless one is already in
+ * progress: repeated taps while an app is starting are ignored (FR-GEN-05).
+ * It closes any context menu, so it isn't still open on return.
+ */
+private inline fun startLaunch(state: LauncherState, effect: () -> Effect): Next =
+    if (state.launching) {
+        Next(state)
+    } else {
+        val launch = state.launches + 1
+        Next(
+            closeContextMenu(state).copy(launching = true, launches = launch),
+            listOf(effect(), Effect.DispatchAfter(LAUNCH_TIMEOUT, Action.LaunchTimedOut(launch))),
+        )
+    }
+
+/**
+ * Starts the remorse timer of [action] (FR-GEST-06, DESIGN §4.6). A
+ * destructive action already waiting runs at once, with its effects.
+ */
+private fun startRemorse(state: LauncherState, action: Destructive): Next {
+    val number = state.remorses + 1
+    val started = RemorseQueue.start(state.remorse, action, number)
+    val committed = started.committed?.let { commit(state, it) } ?: Next(state)
+    return Next(
+        committed.state.copy(remorse = started.pending, remorses = number),
+        committed.effects + Effect.DispatchAfter(REMORSE_DELAY, Action.RemorseDue(number)),
+    )
 }
 
 /** Runs the destructive [action] whose remorse timer is over (FR-GEST-06). */
-private fun commit(state: LauncherState, action: Destructive): LauncherState = when (action) {
-    is Destructive.RemoveFolder -> state.editLayout { LayoutRules.removeFolder(it, action.folder) }
+private fun commit(state: LauncherState, action: Destructive): Next = when (action) {
+    is Destructive.RemoveFolder -> Next(state.editLayout { LayoutRules.removeFolder(it, action.folder) })
+    // They leave the list at once, and stay hidden until the system reports
+    // them gone (FR-EVT-06).
+    is Destructive.ClearNotifications ->
+        Next(
+            state.copy(
+                notifications = state.notifications.filter { it.ref !in action.refs },
+                dismissing = state.dismissing + action.refs,
+            ),
+            listOf(Effect.DismissNotifications(action.refs)),
+        )
 }
 
 /**

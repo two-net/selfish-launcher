@@ -13,6 +13,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.ui.components.AppIcons
 import io.github.twonet.selfish.ui.components.LocalAppIcons
+import io.github.twonet.selfish.ui.components.LocalWallpaperImages
+import io.github.twonet.selfish.ui.components.WallpaperImages
 import io.github.twonet.selfish.ui.LauncherScreen
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
 
@@ -45,10 +47,11 @@ class MainActivity : ComponentActivity() {
         }
 
         val icons = AppIcons(store::icon)
+        val wallpapers = WallpaperImages(store::wallpaperImage)
         setContent {
             val state = store.state.collectAsStateWithLifecycle()
             LauncherTheme {
-                CompositionLocalProvider(LocalAppIcons provides icons) {
+                CompositionLocalProvider(LocalAppIcons provides icons, LocalWallpaperImages provides wallpapers) {
                     LauncherScreen(state.value, store::dispatch)
                 }
             }

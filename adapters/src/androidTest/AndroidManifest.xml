@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- NotificationSourceTest posts its own notifications (API 33+). The
+         test APK only; the launcher never posts any. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application>
         <!-- A launchable app the tests can make appear and disappear by
              enabling and disabling it (LauncherAppsCatalogTest). Disabled

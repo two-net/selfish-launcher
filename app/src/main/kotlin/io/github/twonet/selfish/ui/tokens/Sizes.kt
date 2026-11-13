@@ -43,6 +43,9 @@ object Sizes {
     /** The thickness of the remorse banner's countdown bar (FR-GEST-06). */
     val RemorseBar: Dp = 4.dp
 
+    /** The thumbnail of the wallpaper on the Events card (FR-EVT-03). */
+    val WallpaperThumbnail: Dp = 64.dp
+
     /** How strongly the wallpaper is blurred behind the open App Grid, where supported (FR-GRID-01). */
     val BlurRadius: Dp = 32.dp
 }

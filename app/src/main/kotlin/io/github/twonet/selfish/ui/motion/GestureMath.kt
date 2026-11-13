@@ -1,11 +1,34 @@
 package io.github.twonet.selfish.ui.motion
 
+import io.github.twonet.selfish.domain.state.Layer
 import io.github.twonet.selfish.ui.tokens.Motion
-import kotlin.math.exp
 import kotlin.math.abs
+import kotlin.math.exp
+import kotlin.math.floor
+import kotlin.math.round
+import kotlin.math.sign
 
 /** The axis a drag is locked to once it has clearly moved (FR-GEST-04). */
 enum class Axis { Horizontal, Vertical }
+
+/**
+ * One way out of Home, with its own progress (DESIGN §6.2, §6.3). Its
+ * values grow as the finger moves toward [positive], so the content always
+ * follows the finger. The Top Menu (#11) joins as a third.
+ */
+enum class Track(val axis: Axis) {
+    /** Up from Home: 0 is Home, 1 the App Grid fully open (FR-GRID-01). */
+    AppGrid(Axis.Vertical),
+
+    /**
+     * Sideways between Home and Events (FR-EVT-01), a carousel of two
+     * pages that wraps around, measured in screen widths: Home rests on
+     * even numbers and Events on odd ones. A finger moving left counts up,
+     * so Events comes in from whichever side the finger pushes toward, and
+     * leaves the same way.
+     */
+    Events(Axis.Horizontal),
+}
 
 /**
  * The pure decisions behind every view transition (DESIGN §6.3), kept apart
@@ -63,4 +86,80 @@ object GestureMath {
      * within comfortable reach.
      */
     fun pulleyLimit(item: Float, count: Int): Float = item * (count + 2)
+
+    /**
+     * Where a released transition settles (FR-GEST-02): one step on from
+     * [origin], where the drag started, in the direction it moved (or was
+     * flung, if it didn't move), when [shouldComplete] says so and that step
+     * lies in [range]; otherwise back at [origin], which is peeking.
+     * [value] is where the finger left it, in the same unit; [velocity] is
+     * positive toward larger values, in the unit of [minFling].
+     */
+    fun settleTarget(origin: Float, value: Float, velocity: Float, minFling: Float, range: ClosedFloatingPointRange<Float>): Float {
+        val direction = (value - origin).sign.takeIf { it != 0f } ?: velocity.sign
+        if (direction == 0f) return origin
+        val next = origin + direction
+        if (next !in range) return origin
+        return if (shouldComplete(abs(value - origin), velocity * direction, minFling)) next else origin
+    }
+
+    /**
+     * Where Home is drawn for the Events carousel at [position] (see
+     * [Track.Events]), in screen widths; positive is to the right. Home
+     * changes sides only while it is fully out of view.
+     */
+    fun homeShift(position: Float): Float = 2f * round(position / 2f) - position
+
+    /** Where Events is drawn for the carousel at [position], in screen widths; positive is to the right. */
+    fun eventsShift(position: Float): Float = 2f * floor(position / 2f) + 1f - position
+
+    /**
+     * [position] moved by whole turns of the carousel to lie in (−2, 2), so
+     * it looks the same: Home at 0, and Events at 1 or −1, keeping the side
+     * it came in from.
+     */
+    fun normalize(position: Float): Float = position - 2f * round(position / 2f)
+
+    /**
+     * Where the carousel rests for [layer], starting from [near]: the
+     * nearest place Home or Events rests (any other layer is Home's). Home
+     * goes back the way Events came in. Events opened from Home, with no
+     * finger to follow, comes in from [endSide]: 1 for the right, −1 for
+     * the left.
+     */
+    fun carouselRest(layer: Layer, near: Float, endSide: Float): Float {
+        val events = layer == Layer.Events
+        // The places on either side of near: odd ones for Events, even ones for Home.
+        val before = if (events) 2f * floor((near - 1f) / 2f) + 1f else 2f * floor(near / 2f)
+        val after = before + 2f
+        val toBefore = near - before
+        val toAfter = after - near
+        return when {
+            toBefore < toAfter -> before
+            toAfter < toBefore -> after
+            events -> near + endSide.sign
+            else -> if (abs(before) <= abs(after)) before else after
+        }
+    }
+
+    /**
+     * Which transition a swipe from the resting [from] layer moves, once it
+     * has locked to [axis] after moving ([dx], [dy]), or `null` if it isn't
+     * one, so the elements under the finger keep it (DESIGN §6.3):
+     * - on Home, up opens the App Grid unless Home's covers can still
+     *   scroll ([homeScrolls]); sideways, either way, opens Events;
+     * - on the App Grid, down closes it while it is at its top
+     *   ([gridScrolls] false);
+     * - on Events, sideways returns to Home, unless the swipe started on
+     *   something that takes sideways swipes itself ([claimed]), such as a
+     *   dismissible notification (FR-EVT-05).
+     */
+    fun route(from: Layer, axis: Axis, dx: Float, dy: Float, homeScrolls: Boolean, gridScrolls: Boolean, claimed: Boolean): Track? =
+        when {
+            from == Layer.Home && axis == Axis.Vertical -> Track.AppGrid.takeIf { dy < 0f && !homeScrolls }
+            from == Layer.Home && axis == Axis.Horizontal -> Track.Events.takeIf { dx != 0f }
+            from == Layer.AppGrid && axis == Axis.Vertical -> Track.AppGrid.takeIf { dy > 0f && !gridScrolls }
+            from == Layer.Events && axis == Axis.Horizontal -> Track.Events.takeIf { !claimed }
+            else -> null
+        }
 }

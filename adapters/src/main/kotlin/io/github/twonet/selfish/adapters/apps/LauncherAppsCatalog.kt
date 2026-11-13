@@ -1,6 +1,7 @@
 package io.github.twonet.selfish.adapters.apps
 
 import android.app.ActivityOptions
+import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -320,7 +321,35 @@ class LauncherAppsCatalog internal constructor(
 
     override suspend fun launchShortcut(app: AppId, shortcutId: String, from: Bounds?) = Unit
 
-    override suspend fun open(screen: SystemScreen) = Unit
+    /**
+     * Opens [screen] over the launcher, so Back returns to it. A link opens
+     * in the default browser, and only if it is `https` (FR-EVT-03). The
+     * system Settings app and the usage access screen arrive with #11 and
+     * #19; notification access is the notification source's own
+     * (DESIGN §5.5).
+     */
+    override suspend fun open(screen: SystemScreen) {
+        val intent = when (screen) {
+            is SystemScreen.Link -> {
+                val uri = Uri.parse(screen.url)
+                if (uri.scheme != "https") return
+                Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
+            }
+            SystemScreen.SystemSettings, SystemScreen.NotificationAccess, SystemScreen.UsageAccess -> return
+        }
+        withContext(Dispatchers.Main) {
+            val activity = foreground.current
+            try {
+                if (activity != null) {
+                    activity.startActivity(intent)
+                } else {
+                    appContext.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            } catch (_: ActivityNotFoundException) {
+                // No browser: nothing to open it in.
+            }
+        }
+    }
 
     private companion object {
         /** The platform's own package, which holds the intent resolver. */

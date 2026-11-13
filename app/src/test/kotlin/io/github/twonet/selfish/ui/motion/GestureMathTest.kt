@@ -1,6 +1,7 @@
 package io.github.twonet.selfish.ui.motion
 
 import io.github.twonet.selfish.domain.Verifies
+import io.github.twonet.selfish.domain.state.Layer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -73,5 +74,111 @@ class GestureMathTest {
             val limit = GestureMath.pulleyLimit(item, count)
             assertEquals(count - 1, GestureMath.pulleyIndex(GestureMath.rubberBand(10_000f, limit), item, count))
         }
+    }
+
+    // Settling (FR-GEST-02)
+
+    @Test
+    @Verifies("FR-GEST-02", "FR-GRID-01", "FR-GRID-04")
+    fun `the App Grid settles as it always has`() {
+        val grid = 0f..1f
+        // Opening from Home.
+        assertEquals(0f, GestureMath.settleTarget(0f, 0.2f, 0f, minFling, grid))
+        assertEquals(1f, GestureMath.settleTarget(0f, 0.3f, 0f, minFling, grid))
+        assertEquals(1f, GestureMath.settleTarget(0f, 0.05f, minFling, minFling, grid))
+        assertEquals(0f, GestureMath.settleTarget(0f, 0.9f, -minFling, minFling, grid))
+        assertEquals(1f, GestureMath.settleTarget(0f, 0f, minFling, minFling, grid), "A fling that hasn't moved yet")
+        assertEquals(0f, GestureMath.settleTarget(0f, 0f, -minFling, minFling, grid), "Nothing below Home")
+        // Closing from the grid.
+        assertEquals(0f, GestureMath.settleTarget(1f, 0.6f, 0f, minFling, grid))
+        assertEquals(1f, GestureMath.settleTarget(1f, 0.8f, 0f, minFling, grid))
+        assertEquals(0f, GestureMath.settleTarget(1f, 0.95f, -minFling, minFling, grid))
+    }
+
+    @Test
+    @Verifies("FR-GEST-02", "FR-EVT-01")
+    fun `the Events carousel completes, peeks and is flung either way`() {
+        val fromHome = -1f..1f
+        assertEquals(1f, GestureMath.settleTarget(0f, 0.4f, 0f, minFling, fromHome), "Pushed left")
+        assertEquals(-1f, GestureMath.settleTarget(0f, -0.4f, 0f, minFling, fromHome), "Pushed right")
+        assertEquals(0f, GestureMath.settleTarget(0f, 0.2f, 0f, minFling, fromHome), "Peeked")
+        assertEquals(-1f, GestureMath.settleTarget(0f, -0.05f, -minFling, minFling, fromHome), "Flung right")
+        assertEquals(0f, GestureMath.settleTarget(0f, 0.5f, -minFling, minFling, fromHome), "Flung back")
+
+        val fromEvents = 0f..2f
+        assertEquals(2f, GestureMath.settleTarget(1f, 1.4f, 0f, minFling, fromEvents), "On to Home on the other side")
+        assertEquals(0f, GestureMath.settleTarget(1f, 0.6f, 0f, minFling, fromEvents), "Back to Home")
+    }
+
+    // The Events carousel (FR-EVT-01)
+
+    @Test
+    @Verifies("FR-EVT-01")
+    fun `Events comes in from the side the finger pushes toward, and Home leaves the other way`() {
+        // Home in view.
+        assertEquals(0f, GestureMath.homeShift(0f))
+        assertEquals(1f, GestureMath.eventsShift(0f))
+        // Swiping left on Home: Events comes in from the right.
+        assertEquals(-0.3f, GestureMath.homeShift(0.3f), 1e-6f)
+        assertEquals(0.7f, GestureMath.eventsShift(0.3f), 1e-6f)
+        // Swiping right on Home: Events comes in from the left.
+        assertEquals(0.3f, GestureMath.homeShift(-0.3f), 1e-6f)
+        assertEquals(-0.7f, GestureMath.eventsShift(-0.3f), 1e-6f)
+        // Events in view, Home just off the side it was pushed to.
+        assertEquals(0f, GestureMath.eventsShift(1f))
+        assertEquals(-1f, GestureMath.homeShift(1f))
+        assertEquals(0f, GestureMath.eventsShift(-1f))
+        assertEquals(1f, GestureMath.homeShift(-1f))
+        // Swiping left on Events: Home comes back from the right.
+        assertEquals(0.7f, GestureMath.homeShift(1.3f), 1e-6f)
+        assertEquals(-0.3f, GestureMath.eventsShift(1.3f), 1e-6f)
+    }
+
+    @Test
+    @Verifies("FR-EVT-01")
+    fun `the carousel goes back near zero by whole turns`() {
+        assertEquals(0f, GestureMath.normalize(2f))
+        assertEquals(0f, GestureMath.normalize(-2f))
+        assertEquals(1f, GestureMath.normalize(1f))
+        assertEquals(-1f, GestureMath.normalize(-1f))
+        assertEquals(-1f, GestureMath.normalize(3f))
+    }
+
+    @Test
+    @Verifies("FR-EVT-01", "FR-GEN-03", "FR-GEN-04", "FR-GEST-09")
+    fun `Back and Home send Events out the way it came, and a screen reader opens it from the end side`() {
+        assertEquals(0f, GestureMath.carouselRest(Layer.Home, 1f, endSide = 1f))
+        assertEquals(0f, GestureMath.carouselRest(Layer.Home, -1f, endSide = 1f))
+        assertEquals(2f, GestureMath.carouselRest(Layer.Home, 1.6f, endSide = 1f), "Already pushed on toward Home")
+        assertEquals(1f, GestureMath.carouselRest(Layer.Events, 0f, endSide = 1f), "From the right")
+        assertEquals(-1f, GestureMath.carouselRest(Layer.Events, 0f, endSide = -1f), "From the left in right-to-left layouts")
+        assertEquals(-1f, GestureMath.carouselRest(Layer.Events, -0.4f, endSide = 1f), "Already coming in from the left")
+        assertEquals(0f, GestureMath.carouselRest(Layer.AppGrid, 0f, endSide = 1f))
+    }
+
+    // Who takes a swipe (DESIGN §6.3)
+
+    @Test
+    @Verifies("FR-GRID-01", "FR-GRID-04", "FR-EVT-01", "FR-EVT-05")
+    fun `each resting layer takes only its own swipes`() {
+        fun route(from: Layer, axis: Axis, dx: Float = 0f, dy: Float = 0f, homeScrolls: Boolean = false, gridScrolls: Boolean = false, claimed: Boolean = false) =
+            GestureMath.route(from, axis, dx, dy, homeScrolls, gridScrolls, claimed)
+
+        assertEquals(Track.AppGrid, route(Layer.Home, Axis.Vertical, dy = -20f))
+        assertNull(route(Layer.Home, Axis.Vertical, dy = -20f, homeScrolls = true), "The covers scroll first")
+        assertNull(route(Layer.Home, Axis.Vertical, dy = 20f), "Down is the Top Menu's (#11)")
+        assertEquals(Track.Events, route(Layer.Home, Axis.Horizontal, dx = -20f))
+        assertEquals(Track.Events, route(Layer.Home, Axis.Horizontal, dx = 20f))
+
+        assertEquals(Track.AppGrid, route(Layer.AppGrid, Axis.Vertical, dy = 20f))
+        assertNull(route(Layer.AppGrid, Axis.Vertical, dy = 20f, gridScrolls = true))
+        assertNull(route(Layer.AppGrid, Axis.Vertical, dy = -20f))
+        assertNull(route(Layer.AppGrid, Axis.Horizontal, dx = 20f))
+
+        assertEquals(Track.Events, route(Layer.Events, Axis.Horizontal, dx = 20f))
+        assertEquals(Track.Events, route(Layer.Events, Axis.Horizontal, dx = -20f))
+        assertNull(route(Layer.Events, Axis.Horizontal, dx = 20f, claimed = true), "A dismissible notification's")
+        assertNull(route(Layer.Events, Axis.Vertical, dy = 20f), "The pulley menu's")
+        assertNull(route(Layer.Events, Axis.Vertical, dy = -20f), "The list's")
     }
 }

@@ -46,6 +46,15 @@ issues add their items here. Every release PR signs off the whole list.
 - [ ] [FR-SRCH-06] Nothing in `domain/search` or `ui/search` uses a port, the network or a web-search intent, and the field turns autocorrection off.
 - [ ] [NFR-A11Y-01] With TalkBack, the empty search field is announced as "Search apps", and "No apps found" is announced when it appears.
 
+## Events (SRS §4.6)
+
+- [ ] [FR-EVT-01, FR-ANIM-01] Swiping left on Home brings Events in from the right and swiping right brings it in from the left, following the finger over a dimming wallpaper; on Events, either swipe brings Home back from the side it is pushed toward, and Back sends Events out the way it came. Checked with gesture and 3-button navigation, and in the `ar-XB` pseudolocale.
+- [ ] [FR-EVT-04] With real notifications (a message, an email, a download in progress, a media player), they are grouped under their app's icon and name, newest first; tapping each opens what it points to over the launcher, also on API 34+ devices including Samsung's, and a message that auto-cancels leaves the list.
+- [ ] [FR-EVT-05] On a device, swiping a message sideways dismisses it from the system's shade too; swiping an ongoing one (media, a download) switches to Home instead, and a vertical drag on a row scrolls the list.
+- [ ] [AC-06, FR-EVT-06, FR-GEST-05, FR-GEST-08] With notifications, pulling Events down slowly highlights "Wallpaper details" (once #14 provides it), then "Clear notifications", with a tick for each, and no tick with the system's touch feedback off. Releasing on "Clear notifications" fades the dismissible ones under a 5-second banner; tapping it brings them back, and letting it run clears only those, not ongoing ones or ones that arrived meanwhile.
+- [ ] [FR-EVT-07, FR-ONB-04] On a fresh install, "Turn on" on the notifications card opens the launcher's own notification-access screen; granting it and pressing Back lists the notifications. Revoking access in system settings turns the feature off and the card returns. "Hide" hides the card for good, also after a restart.
+- [ ] [NFR-PRIV-05] Nothing in `adapters/notifications`, `ui/events` or the store logs, writes or sends what notifications say; `NotificationItem` and `Posted` print no contents.
+
 ## User interface (SRS §5.1)
 
 - [ ] [UI-01] Every surface floats over the wallpaper on the `glass`, `scrim` or `dim` tokens; no surface has an opaque full-screen background. Checked in both appearances over a bright and a dark wallpaper.

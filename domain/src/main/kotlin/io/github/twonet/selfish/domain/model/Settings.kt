@@ -41,6 +41,12 @@ data class Settings(
     val haptics: Haptics = Haptics.FollowSystem,
     /** FR-SET-15. */
     val animations: Animations = Animations.FollowSystem,
+    /**
+     * Whether the card in Events that offers notification access was
+     * dismissed, which hides it for good (FR-EVT-07). Not an SRS §4.13
+     * value, but remembered with them.
+     */
+    val notificationsCardDismissed: Boolean = false,
 ) {
     init {
         // Also runs while decoding, so an out-of-range saved value is rejected

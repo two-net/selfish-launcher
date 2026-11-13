@@ -114,6 +114,26 @@ class SystemIntegrationTest {
     }
 
     @Test
+    @Verifies("FR-GEN-03", "FR-GEN-04", "FR-EVT-01")
+    fun backAndHomeCloseEvents() {
+        showLauncherAsHome()
+        // With notifications in Events off, or none to show, Events shows
+        // the card that offers them or "No new events" (FR-EVT-07, FR-EVT-08).
+        val card = Pattern.quote(launcherString("events_notifications_card"))
+        val empty = Pattern.quote(launcherString("events_no_new_events"))
+        val events = By.text(Pattern.compile("$card|$empty"))
+
+        openEvents(events)
+        device.pressBack()
+        assertTrue(device.wait(Until.gone(events), TIMEOUT_MS), "Back didn't close Events")
+        assertLauncherInFront()
+
+        openEvents(events)
+        device.pressHome()
+        assertTrue(device.wait(Until.gone(events), TIMEOUT_MS), "Home didn't close Events")
+    }
+
+    @Test
     @Verifies("FR-GEN-08")
     fun homeReopensTheLauncherAfterTheSystemEndsItsProcess() {
         showLauncherAsHome()
@@ -141,6 +161,13 @@ class SystemIntegrationTest {
     private fun openAppGrid(search: BySelector) {
         device.swipe(device.displayWidth / 2, device.displayHeight / 2, device.displayWidth / 2, device.displayHeight / 10, SWIPE_STEPS)
         assertTrue(device.wait(Until.hasObject(search), TIMEOUT_MS), "The App Grid didn't open")
+    }
+
+    /** Swipes left across the middle of Home, outside the system's gesture areas, until [events] shows (FR-EVT-01). */
+    private fun openEvents(events: BySelector) {
+        val y = device.displayHeight / 2
+        device.swipe(device.displayWidth * 3 / 4, y, device.displayWidth / 4, y, SWIPE_STEPS)
+        assertTrue(device.wait(Until.hasObject(events), TIMEOUT_MS), "Events didn't open")
     }
 
     /** One of the launcher's strings, in the device's language. */

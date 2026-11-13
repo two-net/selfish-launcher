@@ -12,5 +12,6 @@
   "notificationsInEvents": true,
   "notificationDots": true,
   "haptics": "off",
-  "animations": "reduced"
+  "animations": "reduced",
+  "notificationsCardDismissed": true
 }

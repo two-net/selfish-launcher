@@ -1,12 +1,17 @@
 package io.github.twonet.selfish.domain.state
 
+import io.github.twonet.selfish.domain.events.NotificationGroup
+import io.github.twonet.selfish.domain.events.NotificationGroups
 import io.github.twonet.selfish.domain.layout.LayoutRules
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.FolderId
 import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.model.Settings
+import io.github.twonet.selfish.domain.model.WallpaperEntry
 import io.github.twonet.selfish.domain.ports.ClockInfo
+import io.github.twonet.selfish.domain.ports.NotificationItem
+import io.github.twonet.selfish.domain.ports.NotificationRef
 import io.github.twonet.selfish.domain.remorse.Destructive
 import io.github.twonet.selfish.domain.remorse.PendingRemorse
 
@@ -76,6 +81,36 @@ data class LauncherState(
     val remorse: PendingRemorse? = null,
     /** How many remorse timers have started, so a stale one can be told apart. */
     val remorses: Int = 0,
+    /**
+     * The image of the day in use as the wallpaper, for the Events card
+     * (FR-EVT-03, FR-WP-10). #14 fills it in; until then it is `null`, and
+     * Events shows no card.
+     */
+    val wallpaper: WallpaperEntry? = null,
+    /**
+     * Whether the user has granted notification access (FR-EVT-07), or
+     * `null` until it has been checked, which happens each time the launcher
+     * comes on screen.
+     */
+    val notificationAccess: Boolean? = null,
+    /**
+     * Whether "Turn on" sent the user to the system's access screen, so the
+     * setting turns on once access is granted (FR-EVT-07, FR-ONB-04). Not
+     * saved.
+     */
+    val awaitingNotificationAccess: Boolean = false,
+    /**
+     * The current notifications, newest first, while they are shown in
+     * Events (FR-EVT-04). In memory only, never saved (NFR-PRIV-05), and
+     * empty while the feature is off.
+     */
+    val notifications: List<NotificationItem> = emptyList(),
+    /**
+     * Notifications dismissed in Events that the system hasn't reported
+     * gone yet. They stay hidden meanwhile, so a dismissed one never comes
+     * back for a moment (FR-EVT-05).
+     */
+    val dismissing: Set<NotificationRef> = emptySet(),
 )
 
 /**
@@ -150,3 +185,36 @@ val LauncherState.pendingRemoval: FolderId?
 /** Whether Home has no room for another cover, so "Add to Home" explains instead (FR-HOME-05). */
 val LauncherState.homeFull: Boolean
     get() = (layout?.home?.size ?: 0) >= LayoutRules.MAX_COVERS
+
+/**
+ * Whether Events lists notifications: "Notifications in Events" is on and
+ * access is granted (FR-EVT-04, FR-SET-12).
+ */
+val LauncherState.notificationsOn: Boolean
+    get() = settings.notificationsInEvents && notificationAccess == true
+
+/**
+ * Whether Events shows the card that explains notifications and offers to
+ * turn them on: they aren't shown, and the card wasn't dismissed (FR-EVT-07).
+ */
+val LauncherState.showsAccessCard: Boolean
+    get() = !notificationsOn && !settings.notificationsCardDismissed
+
+/** The notifications whose clearing is waiting for its remorse timer, if any (FR-EVT-06). */
+val LauncherState.pendingClear: Set<NotificationRef>
+    get() = (remorse?.action as? Destructive.ClearNotifications)?.refs.orEmpty()
+
+/** The notifications Events lists, grouped by app (FR-EVT-04). */
+val LauncherState.notificationGroups: List<NotificationGroup>
+    get() = NotificationGroups.of(notifications, apps)
+
+/**
+ * The shown notifications that "Clear notifications" would dismiss now:
+ * those the user may dismiss that aren't already waiting to be cleared
+ * (FR-EVT-06).
+ */
+val LauncherState.clearable: List<NotificationItem>
+    get() {
+        val pending = pendingClear
+        return notifications.filter { it.clearable && it.ref !in pending }
+    }

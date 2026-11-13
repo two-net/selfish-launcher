@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.systemGestures
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -25,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
@@ -33,6 +35,7 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.LayoutDirection
 import io.github.twonet.selfish.R
 import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.Layer
@@ -42,8 +45,10 @@ import io.github.twonet.selfish.domain.state.LauncherState
 import io.github.twonet.selfish.domain.state.openFolder
 import io.github.twonet.selfish.ui.components.RemorseBanner
 import io.github.twonet.selfish.ui.components.onUnhandledTap
+import io.github.twonet.selfish.ui.events.EventsScreen
 import io.github.twonet.selfish.ui.grid.AppGrid
 import io.github.twonet.selfish.ui.home.HomeScreen
+import io.github.twonet.selfish.ui.motion.GestureMath
 import io.github.twonet.selfish.ui.motion.LayerGestureController
 import io.github.twonet.selfish.ui.motion.WindowBlur
 import io.github.twonet.selfish.ui.motion.layerGestures
@@ -54,13 +59,15 @@ import kotlinx.coroutines.flow.filter
 /**
  * Every launcher surface, rendered from [state]; every touch goes back as an
  * action (AR-02). Drawn back to front over the system wallpaper (DESIGN
- * §6.2): the dim and blur, Home, the App Grid with its folders, then the
- * remorse banner, over everything (FR-GEST-06).
+ * §6.2): the dim and blur, Home, Events, the App Grid with its folders,
+ * then the remorse banner, over everything (FR-GEST-06).
  *
  * Swiping up on Home slides the App Grid up over a wallpaper that dims (and,
  * where supported, blurs) in proportion, while Home moves up out of the
  * way, as one sheet (FR-GRID-01, FR-ANIM-01). Dragging down with the grid at
- * its top brings Home back (FR-GRID-04). Swipes that start in
+ * its top brings Home back (FR-GRID-04). Swiping sideways on Home pushes it
+ * out and Events in from that side, over the same dim, and swiping sideways
+ * on Events, either way, brings Home back (FR-EVT-01). Swipes that start in
  * [gestureInsets], the system's gesture areas, are left to the system
  * (FR-GEST-04); tests pass their own. While a folder is open, swipes are
  * the folder's (FR-FOLD-07).
@@ -78,9 +85,11 @@ fun LauncherScreen(
     val controller = remember(scope) { LayerGestureController(scope) }
     val currentDispatch by rememberUpdatedState(dispatch)
     val minFling = LocalViewConfiguration.current.minimumFlingVelocity
+    val endSide = if (LocalLayoutDirection.current == LayoutDirection.Ltr) 1f else -1f
     SideEffect {
         controller.onSettled = { currentDispatch(Action.LayerSettled(it)) }
         controller.minFlingVelocity = minFling
+        controller.endSide = endSide
     }
 
     // The store changed the layer, for example on a Home press. A press that
@@ -91,34 +100,43 @@ fun LauncherScreen(
 
     val covers = rememberLazyGridState()
     val grid = rememberLazyGridState()
-    // Every opening starts at the top (FR-GRID-03), so the grid goes back
-    // there once it is out of sight.
+    val events = rememberLazyListState()
+    // Every opening starts at the top (FR-GRID-03), so the grid and Events
+    // go back there once they are out of sight.
     LaunchedEffect(controller, grid) {
-        snapshotFlow { controller.value == 0f }.filter { it }.collect { grid.scrollToItem(0) }
+        snapshotFlow { controller.gridProgress == 0f }.filter { it }.collect { grid.scrollToItem(0) }
     }
-    val closed by remember(controller) { derivedStateOf { controller.value == 0f } }
-    val open by remember(controller) { derivedStateOf { controller.value == 1f } }
-    // The grid is composed once Home has drawn its first frame, and kept: the
-    // launcher shows Home as soon as it can (NFR-PERF-01), and composing the
-    // grid never stalls a swipe that is already under way (NFR-PERF-02).
-    var gridNeeded by remember { mutableStateOf(false) }
+    LaunchedEffect(controller, events) {
+        snapshotFlow { controller.eventsProgress == 0f }.filter { it }.collect { events.scrollToItem(0) }
+    }
+    val closed by remember(controller) { derivedStateOf { controller.gridProgress == 0f } }
+    val open by remember(controller) { derivedStateOf { controller.gridProgress == 1f } }
+    val eventsClosed by remember(controller) { derivedStateOf { controller.eventsProgress == 0f } }
+    val eventsOpen by remember(controller) { derivedStateOf { controller.eventsProgress == 1f } }
+    // The grid and Events are composed once Home has drawn its first frame,
+    // and kept: the launcher shows Home as soon as it can (NFR-PERF-01), and
+    // composing them never stalls a swipe that is already under way
+    // (NFR-PERF-02).
+    var othersNeeded by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         withFrameNanos { }
-        gridNeeded = true
+        othersNeeded = true
     }
 
     val closeMenu = remember { { currentDispatch(Action.CloseContextMenu) } }
     val folderOpen by rememberUpdatedState(state.openFolder != null)
     val showApps = stringResource(R.string.action_show_apps)
+    val showEvents = stringResource(R.string.action_show_events)
+    val showHome = stringResource(R.string.action_show_home)
     val dim = LauncherTheme.colors.dim
 
-    WindowBlur { controller.value }
+    WindowBlur { controller.gridProgress }
     Box(
         Modifier
             .fillMaxSize()
-            .onSizeChanged { controller.travel = it.height.toFloat() }
-            // Edge to edge, behind both surfaces (UI-07).
-            .drawBehind { drawRect(dim, alpha = controller.value) }
+            .onSizeChanged { controller.size = it }
+            // Edge to edge, behind every surface (UI-07).
+            .drawBehind { drawRect(dim, alpha = maxOf(controller.gridProgress, controller.eventsProgress)) }
             .layerGestures(
                 controller = controller,
                 ignored = gestureInsets,
@@ -134,16 +152,23 @@ fun LauncherScreen(
             dispatch = dispatch,
             coversState = covers,
             modifier = Modifier
-                .graphicsLayer { translationY = -controller.value * size.height }
+                .graphicsLayer {
+                    translationY = -controller.gridProgress * size.height
+                    translationX = GestureMath.homeShift(controller.sideways) * size.width
+                }
                 .then(
-                    if (open) {
+                    if (open || eventsOpen) {
                         Modifier.clearAndSetSemantics {}
                     } else {
-                        // Screen-reader users open the grid without swiping (FR-GEST-09).
+                        // Screen-reader users open the grid and Events without swiping (FR-GEST-09).
                         Modifier.semantics {
                             customActions = listOf(
                                 CustomAccessibilityAction(showApps) {
                                     currentDispatch(Action.LayerSettled(Layer.AppGrid))
+                                    true
+                                },
+                                CustomAccessibilityAction(showEvents) {
+                                    currentDispatch(Action.LayerSettled(Layer.Events))
                                     true
                                 },
                             )
@@ -151,14 +176,39 @@ fun LauncherScreen(
                     },
                 ),
         )
-        if (gridNeeded || !closed) {
+        if (othersNeeded || !eventsClosed) {
+            EventsScreen(
+                state = state,
+                dispatch = dispatch,
+                claims = controller.claims,
+                listState = events,
+                modifier = Modifier
+                    .graphicsLayer { translationX = GestureMath.eventsShift(controller.sideways) * size.width }
+                    .then(
+                        if (eventsOpen) {
+                            // And return to Home the same way (FR-GEST-09).
+                            Modifier.semantics {
+                                customActions = listOf(
+                                    CustomAccessibilityAction(showHome) {
+                                        currentDispatch(Action.LayerSettled(Layer.Home))
+                                        true
+                                    },
+                                )
+                            }
+                        } else {
+                            Modifier.clearAndSetSemantics {}
+                        },
+                    ),
+            )
+        }
+        if (othersNeeded || !closed) {
             AppGrid(
                 state = state,
                 dispatch = dispatch,
                 gridState = grid,
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer { translationY = (1f - controller.value) * size.height }
+                    .graphicsLayer { translationY = (1f - controller.gridProgress) * size.height }
                     .then(if (closed) Modifier.clearAndSetSemantics {} else Modifier),
             )
         }
@@ -166,6 +216,7 @@ fun LauncherScreen(
         if (remorse != null) {
             val label = when (remorse.action) {
                 is Destructive.RemoveFolder -> stringResource(R.string.remorse_remove_folder)
+                is Destructive.ClearNotifications -> stringResource(R.string.remorse_clear_notifications)
             }
             RemorseBanner(
                 label = label,

@@ -53,6 +53,7 @@ class PersistenceTest {
         notificationDots = true,
         haptics = Haptics.Off,
         animations = Animations.Reduced,
+        notificationsCardDismissed = true,
     )
 
     private fun resource(name: String): String =

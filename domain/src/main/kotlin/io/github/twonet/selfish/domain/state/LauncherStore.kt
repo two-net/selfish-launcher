@@ -7,6 +7,8 @@ import io.github.twonet.selfish.domain.persist.saveTo
 import io.github.twonet.selfish.domain.ports.AppIconImage
 import io.github.twonet.selfish.domain.ports.DefaultApps
 import io.github.twonet.selfish.domain.ports.DocName
+import io.github.twonet.selfish.domain.ports.ImageId
+import io.github.twonet.selfish.domain.ports.NotificationSource
 import io.github.twonet.selfish.domain.ports.Ports
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -37,8 +39,9 @@ import kotlinx.coroutines.launch
  * Call [dispatch] from [scope]'s thread. In the app that is the main thread
  * (DESIGN §3.3); reducers are small and pure.
  *
- * Besides [state] and [dispatch], the store answers one query, [icon]:
- * icons are pixels to draw, not launcher state (DESIGN §3.3).
+ * Besides [state] and [dispatch], the store answers two queries, [icon]
+ * and [wallpaperImage]: they are pixels to draw, not launcher state
+ * (DESIGN §3.3).
  */
 class LauncherStore(
     private val scope: CoroutineScope,
@@ -58,7 +61,12 @@ class LauncherStore(
      *
      * The clock is the exception: it is followed only while the launcher is
      * on screen, so it never wakes the launcher in the background
-     * (FR-HOME-02, NFR-PWR-02).
+     * (FR-HOME-02, NFR-PWR-02). So are notification access, checked afresh
+     * each time the launcher comes on screen, for example back from the
+     * system's access screen, and the notifications themselves, followed
+     * only while Events may show them (FR-EVT-04, DESIGN §5.5). Hidden, the
+     * launcher keeps the last list, so it never shows "No new events" for a
+     * moment on return.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     fun start() {
@@ -73,6 +81,16 @@ class LauncherStore(
             .distinctUntilChanged()
             .flatMapLatest { shown -> if (shown) ports.osSettings.clock else emptyFlow() }
             .onEach { dispatch(Action.ClockChanged(it)) }
+            .launchIn(scope)
+        state.map { it.homeShown }
+            .distinctUntilChanged()
+            .flatMapLatest { shown -> if (shown) ports.notificationSource.granted else emptyFlow() }
+            .onEach { awaitRestored(); dispatch(Action.NotificationAccessChanged(it)) }
+            .launchIn(scope)
+        state.map { it.homeShown && it.notificationsOn }
+            .distinctUntilChanged()
+            .flatMapLatest { shown -> if (shown) ports.notificationSource.notifications else emptyFlow() }
+            .onEach { dispatch(Action.NotificationsChanged(it)) }
             .launchIn(scope)
     }
 
@@ -93,6 +111,27 @@ class LauncherStore(
     } catch (_: Exception) {
         null
     }
+
+    /**
+     * The bytes of the cached wallpaper image [image], or `null` if it isn't
+     * cached or can't be read; Presentation decodes them for the Events
+     * card's thumbnail (FR-EVT-03). Main-safe.
+     */
+    suspend fun wallpaperImage(image: ImageId): ByteArray? = try {
+        ports.localStorage.readImage(image)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
+
+    /**
+     * The notification source while notifications are on, and the disabled
+     * one otherwise, so nothing reaches notifications that aren't shown
+     * (DESIGN §5.5).
+     */
+    private fun notificationSource(): NotificationSource =
+        if (state.value.notificationsOn) ports.notificationSource else NotificationSource.Disabled
 
     private suspend fun awaitRestored() {
         if (!state.value.restored) state.first { it.restored }
@@ -149,6 +188,10 @@ class LauncherStore(
                 Effect.OfferDefaultHome ->
                     if (!ports.osSettings.isDefaultHome()) ports.osSettings.requestDefaultHome()
                 Effect.ResolveDefaultApps -> dispatch(Action.DefaultAppsResolved(defaultApps()))
+                is Effect.OpenScreen -> ports.appCatalog.open(effect.screen)
+                Effect.RequestNotificationAccess -> ports.notificationSource.requestAccess()
+                is Effect.OpenNotification -> notificationSource().open(effect.key, effect.from)
+                is Effect.DismissNotifications -> notificationSource().dismiss(effect.refs)
                 is Effect.DispatchAfter -> {
                     delay(effect.delay)
                     dispatch(effect.action)

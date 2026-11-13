@@ -33,8 +33,9 @@ import kotlin.test.assertTrue
 
 /**
  * Moving between Home and the App Grid (level I, DESIGN §8.3): the swipes,
- * their thresholds and the screen-reader way in. Events and the Top Menu
- * join with #10 and #11.
+ * their thresholds and the screen-reader way in, and catching a transition
+ * in flight. Events' own swipes are in `EventsTest`; the Top Menu joins
+ * with #11.
  */
 @RunWith(AndroidJUnit4::class)
 class NavigationTest {
@@ -148,8 +149,36 @@ class NavigationTest {
         rule.onNode(gridApp("App 01")).assertIsDisplayed()
     }
 
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    @Verifies("FR-GEST-03", "FR-EVT-01")
+    fun touchingATransitionInFlightCatchesItAndDragsItBack() {
+        launcher.show(launcher(apps, home = apps.take(1)))
+        rule.mainClock.autoAdvance = false
+
+        // Events starts sliding in, and moments later is about a quarter of the way.
+        rule.onNodeWithTag(HomeTags.SCREEN).performCustomAccessibilityActionWithLabel(context.getString(R.string.action_show_events))
+        rule.mainClock.advanceTimeBy(IN_FLIGHT_MILLIS)
+
+        // A short drag back: from a resting Events it would only peek.
+        root().performTouchInput {
+            down(center)
+            repeat(10) { moveBy(Offset(width * 0.025f, 0f)) }
+            moveBy(Offset.Zero, delayMillis = HOLD_MILLIS)
+            up()
+        }
+        rule.mainClock.autoAdvance = true
+        rule.waitForIdle()
+
+        assertEquals(Layer.Home, launcher.state.layer)
+        rule.onNodeWithTag(HomeTags.COVERS).assertIsDisplayed()
+    }
+
     private companion object {
         const val HOLD_MILLIS = 300L
+
+        /** How long a settling transition runs before a test touches it. */
+        const val IN_FLIGHT_MILLIS = 50L
         val GESTURE_AREA = 48.dp
     }
 }

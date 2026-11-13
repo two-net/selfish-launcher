@@ -3,6 +3,7 @@ package io.github.twonet.selfish.domain.state
 import io.github.twonet.selfish.domain.Verifies
 import io.github.twonet.selfish.domain.fakes.FakeAppCatalog
 import io.github.twonet.selfish.domain.fakes.FakeLocalStorage
+import io.github.twonet.selfish.domain.fakes.FakeNotificationSource
 import io.github.twonet.selfish.domain.fakes.FakeOsSettings
 import io.github.twonet.selfish.domain.fakes.FakeWallpaperScheduler
 import io.github.twonet.selfish.domain.fakes.fakePorts
@@ -21,10 +22,13 @@ import io.github.twonet.selfish.domain.ports.AppIconImage
 import io.github.twonet.selfish.domain.ports.ClockInfo
 import io.github.twonet.selfish.domain.ports.DefaultApps
 import io.github.twonet.selfish.domain.ports.DocName
+import io.github.twonet.selfish.domain.ports.ImageId
 import io.github.twonet.selfish.domain.ports.LocalStorage
+import io.github.twonet.selfish.domain.ports.NotificationItem
 import io.github.twonet.selfish.domain.ports.NotificationSource
 import io.github.twonet.selfish.domain.ports.Ports
 import io.github.twonet.selfish.domain.ports.ScheduledRun
+import io.github.twonet.selfish.domain.ports.SystemScreen
 import io.github.twonet.selfish.domain.ports.UsageSource
 import io.github.twonet.selfish.domain.remorse.REMORSE_DELAY
 import kotlinx.coroutines.CompletableDeferred
@@ -459,5 +463,140 @@ class LauncherStoreTest {
 
         assertEquals(listOf(DocName.Settings), storage.writes.map { it.first })
         assertEquals(savedLayout, LayoutDoc.decodeOrNull(storage.docs[DocName.Layout]))
+    }
+
+    // Events (FR-EVT-03 to FR-EVT-07, DESIGN §5.5)
+
+    private val notes = FakeNotificationSource()
+    private val withNotifications get() = fakePorts(appCatalog = catalog, localStorage = storage, osSettings = os, notificationSource = notes)
+    private val message = NotificationItem("k1", "com.chat", 0, "Chat", "Ana", "Hello", 1, 1, clearable = true)
+
+    @Test
+    @Verifies("FR-EVT-07", "NFR-PWR-02")
+    fun `notification access is checked each time the launcher comes on screen, and never while hidden`() = runTest {
+        val store = startedStore(withNotifications)
+        assertEquals(0, notes.granted.subscriptionCount.value)
+        assertNull(store.state.value.notificationAccess)
+
+        store.dispatch(Action.HomeShown)
+        runCurrent()
+        assertEquals(1, notes.granted.subscriptionCount.value)
+        assertEquals(true, store.state.value.notificationAccess)
+
+        store.dispatch(Action.HomeHidden)
+        runCurrent()
+        assertEquals(0, notes.granted.subscriptionCount.value)
+    }
+
+    @Test
+    @Verifies("FR-EVT-04", "NFR-PRIV-05", "NFR-PWR-02")
+    fun `notifications are followed only while shown, turned on and granted`() = runTest {
+        notes.notifications.value = listOf(message)
+        val store = startedStore(withNotifications)
+        store.dispatch(Action.HomeShown)
+        runCurrent()
+        assertEquals(0, notes.notifications.subscriptionCount.value, "Off")
+
+        store.dispatch(Action.TurnOnNotifications)
+        runCurrent()
+        assertEquals(1, notes.notifications.subscriptionCount.value)
+        assertEquals(listOf(message), store.state.value.notifications)
+
+        store.dispatch(Action.HomeHidden)
+        runCurrent()
+        assertEquals(0, notes.notifications.subscriptionCount.value)
+        assertEquals(listOf(message), store.state.value.notifications, "Kept for the return")
+    }
+
+    @Test
+    @Verifies("FR-EVT-07", "FR-ONB-04")
+    fun `turning on without access opens the access screen, and turns on once it is granted`() = runTest {
+        notes.granted.value = false
+        val store = startedStore(withNotifications)
+        store.dispatch(Action.HomeShown)
+        runCurrent()
+
+        store.dispatch(Action.TurnOnNotifications)
+        store.dispatch(Action.HomeHidden)
+        runCurrent()
+        assertEquals(1, notes.accessRequests)
+
+        notes.granted.value = true
+        store.dispatch(Action.HomeShown)
+        runCurrent()
+
+        assertTrue(store.state.value.notificationsOn)
+        assertEquals(true, SettingsDoc.decode(storage.docs[DocName.Settings]).notificationsInEvents)
+    }
+
+    @Test
+    @Verifies("FR-ONB-04")
+    fun `revoked access turns notifications off, and that is saved`() = runTest {
+        save(savedLayout, Settings(notificationsInEvents = true))
+        val store = startedStore(withNotifications)
+        store.dispatch(Action.HomeShown)
+        runCurrent()
+        assertTrue(store.state.value.notificationsOn)
+
+        notes.granted.value = false
+        runCurrent()
+
+        assertFalse(store.state.value.settings.notificationsInEvents)
+        assertEquals(false, SettingsDoc.decode(storage.docs[DocName.Settings]).notificationsInEvents)
+    }
+
+    @Test
+    @Verifies("FR-EVT-04", "FR-EVT-05")
+    fun `opening and dismissing reach the notification source`() = runTest {
+        save(savedLayout, Settings(notificationsInEvents = true))
+        notes.notifications.value = listOf(message)
+        val store = startedStore(withNotifications)
+        store.dispatch(Action.HomeShown)
+        runCurrent()
+        val bounds = Bounds(0, 0, 10, 10)
+
+        store.dispatch(Action.OpenNotification("k1", bounds))
+        store.dispatch(Action.DismissNotification("k1"))
+        runCurrent()
+
+        assertEquals(listOf<Pair<String, Bounds?>>("k1" to bounds), notes.opened)
+        assertEquals(listOf(setOf(message.ref)), notes.dismissed)
+        assertEquals(emptyList(), store.state.value.notifications)
+    }
+
+    @Test
+    @Verifies("FR-EVT-06", "FR-GEST-06")
+    fun `clearing runs when its timer runs out, even after the launcher is hidden`() = runTest {
+        save(savedLayout, Settings(notificationsInEvents = true))
+        notes.notifications.value = listOf(message)
+        val store = startedStore(withNotifications)
+        store.dispatch(Action.HomeShown)
+        runCurrent()
+
+        store.dispatch(Action.ClearNotifications)
+        store.dispatch(Action.HomeHidden)
+        advanceTimeBy(REMORSE_DELAY - 1.milliseconds)
+        runCurrent()
+        assertEquals(emptyList(), notes.dismissed, "Still waiting")
+
+        advanceTimeBy(1.milliseconds)
+        runCurrent()
+
+        assertEquals(listOf(setOf(message.ref)), notes.dismissed)
+        assertEquals(emptyList(), notes.notifications.value)
+    }
+
+    @Test
+    @Verifies("FR-EVT-03")
+    fun `Learn more reaches the app catalog, and the card's image is read from storage`() = runTest {
+        storage.writeImage(ImageId("today"), byteArrayOf(1, 2, 3))
+        val store = startedStore()
+
+        store.dispatch(Action.OpenLink("https://www.bing.com/"))
+        runCurrent()
+
+        assertEquals(listOf<SystemScreen>(SystemScreen.Link("https://www.bing.com/")), catalog.openedScreens)
+        assertEquals(listOf<Byte>(1, 2, 3), store.wallpaperImage(ImageId("today"))?.toList())
+        assertNull(store.wallpaperImage(ImageId("missing")))
     }
 }

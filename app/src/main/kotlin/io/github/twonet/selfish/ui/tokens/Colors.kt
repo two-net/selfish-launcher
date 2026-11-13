@@ -22,7 +22,10 @@ class LauncherColors(
      * as the clock. Home weakens it over wallpapers that don't need it.
      */
     val scrim: Color,
-    /** The App Grid's backdrop at full progress; it follows the gesture (FR-ANIM-01). */
+    /**
+     * The backdrop of the App Grid and of Events once fully in view; it
+     * follows the gesture (FR-ANIM-01).
+     */
     val dim: Color,
     /**
      * The highlight when the wallpaper gives none (FR-AMB-03). Used only for

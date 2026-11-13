@@ -31,6 +31,12 @@ class SettingsDefaultsTest {
     }
 
     @Test
+    @Verifies("FR-EVT-07")
+    fun `the notifications card in Events shows until it is dismissed`() {
+        assertEquals(false, defaults.notificationsCardDismissed)
+    }
+
+    @Test
     @Verifies("FR-SET-09")
     fun `the App Grid has 3 to 5 columns`() {
         for (columns in 3..5) Settings(gridColumns = columns)

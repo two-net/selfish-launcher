@@ -17,6 +17,13 @@ sealed interface Layer {
     data object Events : Layer
 
     data object TopMenu : Layer
+
+    /**
+     * The page about the current wallpaper (FR-WP-09), opened from Events
+     * (FR-EVT-03, FR-EVT-06). #14 draws it; until then nothing opens it,
+     * because there is no wallpaper entry yet.
+     */
+    data object WallpaperDetails : Layer
 }
 
 /**
