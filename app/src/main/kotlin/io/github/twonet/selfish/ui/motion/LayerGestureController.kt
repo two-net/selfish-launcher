@@ -176,14 +176,15 @@ class LayerGestureController(private val scope: CoroutineScope) {
      * Moves to the store's [layer], for example after a Home or Back press,
      * unless the transitions are already heading there. With [animate]
      * false it jumps, for a change made while the launcher wasn't in front.
-     * Layers no track leads to, such as Wallpaper details, are left to
-     * their own issues.
+     * Wallpaper details opens over Home, so whatever it was opened from,
+     * Events or the Top Menu, goes back beneath it (FR-WP-09).
      */
     fun follow(layer: Layer, animate: Boolean) {
-        if (layer !in FOLLOWED) return
-        val gridTarget = if (layer == Layer.AppGrid) 1f else 0f
-        val carouselTarget = GestureMath.carouselRest(layer, carousel.value, endSide)
-        val topMenuTarget = if (layer == Layer.TopMenu) 1f else 0f
+        val target = if (layer == Layer.WallpaperDetails) Layer.Home else layer
+        if (target !in FOLLOWED) return
+        val gridTarget = if (target == Layer.AppGrid) 1f else 0f
+        val carouselTarget = GestureMath.carouselRest(target, carousel.value, endSide)
+        val topMenuTarget = if (target == Layer.TopMenu) 1f else 0f
         moveTo(Track.AppGrid, gridTarget, animate)
         moveTo(Track.Events, carouselTarget, animate)
         moveTo(Track.TopMenu, topMenuTarget, animate)

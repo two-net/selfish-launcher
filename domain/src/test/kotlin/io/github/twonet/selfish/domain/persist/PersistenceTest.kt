@@ -2,6 +2,7 @@ package io.github.twonet.selfish.domain.persist
 
 import io.github.twonet.selfish.domain.Verifies
 import io.github.twonet.selfish.domain.model.AppId
+import io.github.twonet.selfish.domain.model.AppliedWallpaper
 import io.github.twonet.selfish.domain.model.AppearanceMode
 import io.github.twonet.selfish.domain.model.Animations
 import io.github.twonet.selfish.domain.model.CoversShow
@@ -11,14 +12,22 @@ import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Haptics
 import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.model.Market
+import io.github.twonet.selfish.domain.model.PixelSize
 import io.github.twonet.selfish.domain.model.Settings
 import io.github.twonet.selfish.domain.model.SwipeDownOpens
+import io.github.twonet.selfish.domain.model.WallpaperEntry
+import io.github.twonet.selfish.domain.model.WallpaperIndex
+import io.github.twonet.selfish.domain.model.WallpaperStatus
+import io.github.twonet.selfish.domain.ports.ImageId
+import io.github.twonet.selfish.domain.ports.WallpaperId
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
+import java.time.Instant
+import java.time.LocalDate
 
 /**
  * The saved documents (SRS §8, DESIGN §4.7).
@@ -56,6 +65,41 @@ class PersistenceTest {
         notificationsCardDismissed = true,
     )
 
+    private val lighthouse = WallpaperEntry(
+        image = ImageId("5d8c1f0e9b7a4c21"),
+        title = "A lighthouse at dusk",
+        copyright = "Lighthouse, Maine (© A Photographer)",
+        link = "https://www.bing.com/search?q=lighthouse",
+        date = LocalDate.of(2026, 11, 13),
+        market = Market("de-DE"),
+        size = PixelSize(1080, 1920),
+        bytes = 412345,
+    )
+    private val glacier = WallpaperEntry(
+        image = ImageId("20261112_de-DE"),
+        title = "A glacier at noon",
+        copyright = "Glacier, Iceland (© Another Photographer)",
+        link = null,
+        date = LocalDate.of(2026, 11, 12),
+        market = Market("de-DE"),
+        size = PixelSize(1920, 1080),
+        bytes = 398765,
+    )
+
+    private val sampleIndex = WallpaperIndex(
+        entries = listOf(lighthouse, glacier),
+        pinned = glacier.image,
+        status = WallpaperStatus(
+            lastCheck = Instant.parse("2026-11-13T09:15:00Z"),
+            lastSuccess = Instant.parse("2026-11-13T06:15:00Z"),
+            day = LocalDate.of(2026, 11, 13),
+            checksToday = 3,
+            retriesToday = 1,
+            failures = 1,
+            applied = AppliedWallpaper(glacier.image, WallpaperId(42)),
+        ),
+    )
+
     private fun resource(name: String): String =
         checkNotNull(javaClass.getResource("/persist/$name")) { "Missing sample $name" }.readText()
 
@@ -81,10 +125,49 @@ class PersistenceTest {
     }
 
     @Test
-    fun `both documents round-trip`() {
+    @Verifies("FR-WP-07")
+    fun `the frozen version 1 wallpaper index still decodes`() {
+        assertEquals(sampleIndex, WallpaperIndexDoc.decodeOrNull(resource("wallpapers-v1.json")))
+        assertSampleSetsEveryField(WallpaperIndexDoc, sampleIndex)
+    }
+
+    @Test
+    fun `every document round-trips`() {
         assertEquals(sampleLayout, LayoutDoc.decodeOrNull(LayoutDoc.encode(sampleLayout)))
         assertEquals(sampleSettings, SettingsDoc.decodeOrNull(SettingsDoc.encode(sampleSettings)))
         assertEquals(Settings(), SettingsDoc.decodeOrNull(SettingsDoc.encode(Settings())))
+        assertEquals(sampleIndex, WallpaperIndexDoc.decodeOrNull(WallpaperIndexDoc.encode(sampleIndex)))
+        assertEquals(WallpaperIndex(), WallpaperIndexDoc.decodeOrNull(WallpaperIndexDoc.encode(WallpaperIndex())))
+    }
+
+    @Test
+    fun `no usable wallpaper index means an empty cache`() {
+        for (text in listOf(null, "", "{", "[]", """{"schemaVersion":2}""")) {
+            assertEquals(WallpaperIndex(), WallpaperIndexDoc.decode(text), "for $text")
+        }
+    }
+
+    @Test
+    fun `a wallpaper index keeps what is still valid`() {
+        val text = WallpaperIndexDoc.encode(sampleIndex)
+            // A broken date drops that entry alone, and with it the pin on it.
+            .replace("\"2026-11-12\"", "\"yesterday\"")
+            // A broken time falls back to never.
+            .replace("\"2026-11-13T09:15:00Z\"", "\"soon\"")
+        val index = WallpaperIndexDoc.decode(text)
+
+        assertEquals(listOf(lighthouse), index.entries)
+        assertNull(index.pinned)
+        assertNull(index.status.lastCheck)
+        assertEquals(sampleIndex.status.lastSuccess, index.status.lastSuccess)
+        assertEquals(sampleIndex.status.applied, index.status.applied)
+    }
+
+    @Test
+    fun `a wallpaper index lists each image once`() {
+        val text = WallpaperIndexDoc.encode(sampleIndex.copy(entries = listOf(lighthouse, lighthouse.copy(title = "Again"), glacier)))
+
+        assertEquals(listOf(lighthouse, glacier), WallpaperIndexDoc.decode(text).entries)
     }
 
     @Test

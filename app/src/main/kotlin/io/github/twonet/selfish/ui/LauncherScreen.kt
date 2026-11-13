@@ -1,6 +1,9 @@
 package io.github.twonet.selfish.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -49,6 +52,7 @@ import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.Layer
 import io.github.twonet.selfish.domain.remorse.Destructive
 import io.github.twonet.selfish.domain.remorse.REMORSE_DELAY
+import io.github.twonet.selfish.domain.model.WallpaperEntry
 import io.github.twonet.selfish.domain.state.LauncherState
 import io.github.twonet.selfish.domain.state.openFolder
 import io.github.twonet.selfish.ui.components.LauncherHaptics
@@ -67,6 +71,9 @@ import io.github.twonet.selfish.ui.tokens.LauncherTheme
 import io.github.twonet.selfish.ui.tokens.Motion
 import io.github.twonet.selfish.ui.tokens.Spacing
 import io.github.twonet.selfish.ui.topmenu.TopMenu
+import io.github.twonet.selfish.ui.wallpaper.WallpaperDetails
+import io.github.twonet.selfish.ui.wallpaper.rememberWallpaperCrossfade
+import io.github.twonet.selfish.ui.wallpaper.watchFingers
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 
@@ -87,7 +94,11 @@ import kotlinx.coroutines.launch
  * in [gestureInsets], the system's gesture areas and the status bar, are
  * left to the system, so a pull from the top edge still opens the
  * notification shade (FR-GEST-04); tests pass their own. While a folder is
- * open, swipes are the folder's (FR-FOLD-07).
+ * open, swipes are the folder's (FR-FOLD-07). Wallpaper details fades in
+ * over Home and takes every touch until Back or Home closes it (FR-WP-09).
+ *
+ * A new wallpaper is applied only once no finger is down and nothing is
+ * settling, with the outgoing image fading out over it (FR-ANIM-10).
  *
  * When the launcher returns from an app, what is in view settles into place
  * from slightly smaller and partly transparent (FR-ANIM-03). Under reduced
@@ -158,6 +169,20 @@ fun LauncherScreen(
 
     val closeMenu = remember { { currentDispatch(Action.CloseContextMenu) } }
     val folderOpen by rememberUpdatedState(state.openFolder != null)
+    val detailsOpen = state.layer == Layer.WallpaperDetails
+    val currentDetailsOpen by rememberUpdatedState(detailsOpen)
+    // The entry Wallpaper details shows, kept while it fades out.
+    val shownWallpaper = remember { Kept<WallpaperEntry>() }
+    val detailsEntry = (state.wallpaper ?: shownWallpaper.value).also { shownWallpaper.value = it }
+    val fingersDown = remember { mutableStateOf(false) }
+    val crossfade = rememberWallpaperCrossfade(
+        state = state,
+        dispatch = dispatch,
+        idle = { !fingersDown.value && controller.settling == null },
+        // The App Grid's blur would show the cover sharp over a blurred wallpaper.
+        canCover = { controller.gridProgress == 0f },
+        screen = { controller.size },
+    )
     val showApps = stringResource(R.string.action_show_apps)
     val showEvents = stringResource(R.string.action_show_events)
     val showTopMenu = stringResource(R.string.action_show_top_menu)
@@ -170,9 +195,14 @@ fun LauncherScreen(
         Box(
             Modifier
                 .fillMaxSize()
+                .watchFingers(fingersDown)
                 .onSizeChanged { controller.size = it }
-                // Edge to edge, behind every surface (UI-07).
-                .drawBehind { drawRect(dim, alpha = maxOf(controller.gridProgress, controller.eventsProgress, controller.topMenuProgress)) }
+                // Edge to edge, behind every surface (UI-07): the outgoing
+                // wallpaper while a new one comes in, then the dim.
+                .drawBehind {
+                    with(crossfade) { drawOutgoing() }
+                    drawRect(dim, alpha = maxOf(controller.gridProgress, controller.eventsProgress, controller.topMenuProgress))
+                }
                 .layerGestures(
                     controller = controller,
                     ignored = gestureInsets,
@@ -184,7 +214,7 @@ fun LauncherScreen(
                             topMenuForward = topMenu.canScrollForward,
                         )
                     },
-                    paused = { folderOpen },
+                    paused = { folderOpen || currentDetailsOpen },
                 )
                 .onUnhandledTap(closeMenu)
                 .testTag(LauncherTags.ROOT),
@@ -202,7 +232,7 @@ fun LauncherScreen(
                             translationX = GestureMath.homeShift(controller.sideways) * size.width
                         }
                         .then(
-                            if (open || eventsOpen || topMenuOpen) {
+                            if (open || eventsOpen || topMenuOpen || detailsOpen) {
                                 Modifier.clearAndSetSemantics {}
                             } else {
                                 // Screen-reader users open the grid, Events and the
@@ -285,6 +315,13 @@ fun LauncherScreen(
                         },
                     )
                 }
+                AnimatedVisibility(
+                    visible = detailsOpen && state.wallpaper != null,
+                    enter = fadeIn(motion.fadeIn()),
+                    exit = fadeOut(motion.fadeOut()),
+                ) {
+                    detailsEntry?.let { WallpaperDetails(state, it, dispatch) }
+                }
             }
             val remorse = state.remorse
             if (remorse != null) {
@@ -338,6 +375,11 @@ private fun rememberHomeReturn(motion: LauncherMotion): Animatable<Float, Animat
 /** Whether the launcher has been hidden since it last returned. Not state: it never redraws anything. */
 private class Away {
     var value = false
+}
+
+/** The last value seen, kept across compositions. Not state: whatever changes it already recomposes. */
+private class Kept<T : Any> {
+    var value: T? = null
 }
 
 /**

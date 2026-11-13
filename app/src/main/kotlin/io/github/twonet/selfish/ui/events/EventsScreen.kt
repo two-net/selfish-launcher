@@ -2,7 +2,6 @@ package io.github.twonet.selfish.ui.events
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -33,7 +32,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -58,6 +56,7 @@ import io.github.twonet.selfish.ui.components.LocalWallpaperImages
 import io.github.twonet.selfish.ui.components.PageHeader
 import io.github.twonet.selfish.ui.components.PulleyItem
 import io.github.twonet.selfish.ui.components.PulleyMenu
+import io.github.twonet.selfish.ui.components.TextButton
 import io.github.twonet.selfish.ui.components.SwipeToDismiss
 import io.github.twonet.selfish.ui.components.onBoundsInWindow
 import io.github.twonet.selfish.ui.components.pressable
@@ -271,17 +270,6 @@ private fun NotificationsCard(dispatch: (Action) -> Unit, modifier: Modifier) {
                 TextButton(stringResource(R.string.events_notifications_turn_on)) { dispatch(Action.TurnOnNotifications) }
             }
         }
-    }
-}
-
-/** A short action in a card, as text, at least the minimum touch size (UI-06). */
-@Composable
-private fun TextButton(label: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier.pressable(role = Role.Button, onClick = onClick).padding(horizontal = Spacing.Small),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        LauncherText(label, role = TextRole.Label, maxLines = 1)
     }
 }
 

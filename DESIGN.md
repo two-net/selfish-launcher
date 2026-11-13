@@ -163,13 +163,13 @@ domain/src/main/kotlin/…/domain/
               Settings, WallpaperEntry, Appearance, Market, Rgb
   state/      LauncherState, Layer, Overlay, Action, Effect, LauncherStore, reduce()
   layout/     LayoutRules, CatalogReconciler, FirstRunLayout
-  wallpaper/  WallpaperPolicy, MarketResolver, Crop
+  wallpaper/  WallpaperPolicy, MarketResolver, Crop, WallpaperUpdater
   theme/      ThemeResolver, HighlightColor, Contrast
   search/     TextNormalizer, SearchRanker
   events/     NotificationGroups
   remorse/    RemorseQueue
   persist/    VersionedDocument, LenientListSerializer, LayoutDoc, SettingsDoc,
-              WallpaperIndexDoc (#14), saveTo (the savers)
+              WallpaperIndexDoc, TimeSerializers, saveTo (the savers)
   ports/      AppCatalog, LocalStorage, SystemWallpaper, BingFeed,
               WallpaperScheduler, OsSettings, NotificationSource, UsageSource
 domain/src/testFixtures/kotlin/…/domain/
@@ -191,7 +191,7 @@ app/src/main/kotlin/…/
   ui/components/  Pressable, LauncherText, Glass, PageHeader, AppIcon, AppIcons, Cover,
                   FolderIcon, PressGlow, PulleyMenu, ContextMenu, RemorseBanner,
                   GestureHint, ReorderableGrid, SwipeToDismiss, ClockFormat,
-                  WallpaperImages
+                  WallpaperImages, TextButton
   ui/home/  ui/grid/  ui/folder/  ui/search/  ui/events/  ui/topmenu/
   ui/settings/  ui/wallpaper/  ui/onboarding/
 ```
@@ -218,6 +218,8 @@ app/src/main/kotlin/…/
   - **Restore first.** `start()` subscribes to the ports at once, because a scheduled run emitted before anyone listens is lost. It holds their events back until `Action.Restored(layout, settings)` has been dispatched, so every feature sees the saved state. `LauncherState.restored` is false until then, and Home shows only the wallpaper (FR-GEN-08).
   - **No saved layout is a first run.** `LauncherState.layout` stays `null` when nothing usable was saved, until the first-run layout is built (§4.2).
   - **Savers** compare each new value with the last one written. Nothing is written at start, and a change made before a saver starts is not lost. A document whose read *failed* (as opposed to one that was missing or corrupt) is not written again in that process, so a passing storage error can't replace the user's file with defaults.
+  - **The wallpaper cache index** (`wallpapers.json`) is restored with them, in `Action.Restored`. A readable index is first matched with the image files: entries whose file is missing are dropped, and files no entry names are deleted, such as an image stored just before the process died. An index that couldn't be read is neither matched nor written, so no image is deleted for it. Its saver writes the projection `LauncherState.wallpaperIndex` only while Daily Bing wallpaper is on, so the index isn't written back after the cache is deleted (FR-WP-13). *Built in #14.*
+- **Time.** The store takes a `java.time.Clock` and the device locale, for the wallpaper checks' "3 hours old", day counts and the Automatic market (§4.3). The reducer has no clock, so whether a check is due is decided when it runs, and its result carries the time. Tests pass a clock that follows virtual time.
 
 **Threading**
 
@@ -265,12 +267,13 @@ Overlays: Folder(id) · ContextMenu(target)     (stacked over a layer)
 | `Search(query)` sets `LauncherState.query`, only on the App Grid, and closes any context menu, because the results replace the grid's items. The grid shows results while the query has something besides spaces in it (`searching`). *Built in #9.* | FR-SRCH-01 |
 | Closing the App Grid clears the search query and hides the keyboard. The reducer keeps the query empty whenever the layer isn't the App Grid, whichever action left it. Hiding the launcher keeps it, so Back from an app launched from the results returns to them. The keyboard is not an overlay: the system's input method takes Back to hide itself before the launcher sees it, so the keyboard stays with the search field as transient UI state (§6.4), as it does for a folder name being edited. | FR-SRCH-05 |
 | `Layer.Events` is reached like the App Grid, by `LayerSettled` from a released sideways swipe or the screen reader's "Show events", and Back and Home close it by the rules above. *Built in #10.* | FR-EVT-01, FR-GEN-03, FR-GEN-04 |
-| `LauncherState.wallpaper` is the image of the day in use, a `WallpaperEntry` with its image, title, copyright text and link; #14 fills it in. `OpenWallpaperDetails` moves to `Layer.WallpaperDetails`, which #14 draws, only while there is an entry, so neither the Events card nor its menu item appear before then. `OpenLink(url)` emits `Effect.OpenScreen(Link)`. *Built in #10.* | FR-EVT-03, FR-EVT-06, FR-WP-10 |
+| `LauncherState.wallpaper` is the image of the day in use, a `WallpaperEntry` with its image, title, copyright text, link, date, market, size and file size. `OpenWallpaperDetails` moves to `Layer.WallpaperDetails` only while there is an entry, so neither the Events card nor its menu item appear before then. `OpenLink(url)` emits `Effect.OpenScreen(Link)`. *Built in #10; #14 fills the entry in and draws the page (§6.4).* Back and Home close Wallpaper details as any layer; without a wallpaper, for example once Daily Bing wallpaper is off, it closes onto Home (`keepRules`). | FR-EVT-03, FR-EVT-06, FR-WP-09, FR-WP-10 |
 | Notifications are on (`notificationsOn`) while "Notifications in Events" is on *and* access is granted (`notificationAccess`, `null` until first checked). `TurnOnNotifications` turns the setting on only with access granted; without it, it sets `awaitingNotificationAccess` and emits `Effect.RequestNotificationAccess`, and access granted while waiting turns the setting on. After every action, access known to be missing turns the setting off (a revocation, even one made while the process was dead), and with notifications off the list, the dismissals waiting for confirmation and any pending clear are dropped. The setting is never on while access is known to be missing, so these rules can't undo "Turn on". `HideNotificationsCard` sets `Settings.notificationsCardDismissed`, saved with the settings. *Built in #10.* | FR-EVT-04, FR-EVT-07, FR-ONB-04, NFR-PRIV-05 |
 | `NotificationsChanged(items)` replaces the list while notifications are on. `DismissNotification(key)` removes a dismissible one at once, records its `NotificationRef` (key and post time) in `dismissing` until the system reports it gone, and emits `Effect.DismissNotifications`; one updated meanwhile has a new post time, and shows. `OpenNotification(key, bounds)` is a launch, under the launch guard. `ClearNotifications` starts a remorse timer for the refs of the dismissible notifications shown at that moment, so one that arrives during the countdown isn't cleared. *Built in #10.* | FR-EVT-04, FR-EVT-05, FR-EVT-06, FR-GEN-05 |
 | `Layer.TopMenu` is reached like the App Grid and Events, by `LayerSettled`: from a released swipe down, a long-press on an empty part of Home or the screen reader's "Show top menu". Back, Home, a swipe up and a tap beneath it close it by the rules above. *Built in #11.* | FR-TOP-01, FR-TOP-05, FR-TOP-06, FR-GEN-03, FR-GEN-04 |
 | `SetAppearance(mode)` sets `Settings.appearance`, which the savers write; the Top Menu's switch and, with #18, Settings send it. #17 resolves the mode and makes the theme follow it (§4.4). *Built in #11.* | FR-TOP-02, FR-THM-09 |
-| `LauncherState.wallpapers` lists the cached images, newest first, and `pinned` is the one chosen as an ambience, or `null` for Daily; #14 fills both from the cache index. The Ambiences row shows while Daily Bing wallpaper is on and something is cached (`showsAmbiences`). `PinWallpaper(image)`, only for a cached image with Daily on, pins it and puts it in use as `wallpaper`; `ResumeDaily` unpins and puts the newest back in use (§4.3). #14 adds the effects that apply the image and save the pin. *Built in #11.* | FR-TOP-03, FR-WP-08, FR-WP-13 |
+| `LauncherState.wallpapers` lists the cached images, newest first, and `pinned` is the one chosen as an ambience, or `null` for Daily; both come from the cache index and are saved in it. The Ambiences row shows while Daily Bing wallpaper is on and something is cached (`showsAmbiences`). `PinWallpaper(image)`, only for a cached image with Daily on, pins it and puts it in use as `wallpaper`; `ResumeDaily` unpins and puts the newest back in use (§4.3). The image in use is then applied (§4.3). *Built in #11; #14 applies and saves.* | FR-TOP-03, FR-WP-08, FR-WP-13 |
+| The wallpaper actions: `RefreshWallpaper` ("Refresh now"), `WallpaperChecked` (a check's result), `ApplyWallpaperNow` (Presentation is ready for the due image), `WallpaperApplied` and `WallpaperApplyFailed`, and the settings `SetDailyWallpaper`, `SetMarket`, `SetWallpaperLockScreen` and `SetDownloadOn`, whose controls the Settings page (#18) draws. `LauncherState.wallpaperStatus` is what the checks remember (saved in the index); `wallpaperWork` is the check and apply in progress (not saved). The reducer's wallpaper rules live in `state/WallpaperReducer.kt` (§4.3). *Built in #14.* | FR-WP-01 to FR-WP-14 |
 | `OpenSystemSettings` emits `Effect.OpenScreen(SystemSettings)` and keeps the Top Menu open, so Back from Settings returns to it. "Launcher settings" arrives with the Settings page (#18). *Built in #11.* | FR-TOP-04 |
 | `Settings` holds every setting from SRS §4.13, with the SRS defaults (for example Appearance = System, Daily Bing wallpaper = On). | FR-SET-01 to FR-SET-17, FR-THM-02 |
 
@@ -309,22 +312,23 @@ With "Covers show: Recently used" (FR-HOME-10, C), Home shows `UsageSource.recen
 
 ### 4.3 Wallpaper policy
 
-`WallpaperPolicy` is a set of pure decisions. Its inputs are the settings, the wallpaper index (cached entries, current and pinned image, last check, last success, failures today), the time, the network state and whether a gesture is in progress.
+`WallpaperPolicy` is a set of pure decisions. Its inputs are the settings, the wallpaper index (cached entries, current and pinned image, last check, last success, failures today), the time, the network state and whether a gesture is in progress. *Built in #14:* `WallpaperUpdater` does the I/O around the decisions through the ports, and the reducer (`state/WallpaperReducer.kt`) keeps `LauncherState` in step and asks for the I/O as effects. Until the feed client (#15) lands, every check fails quietly.
 
 | Decision | Rule | Serves |
 |---|---|---|
-| When to check | **Home shown:** check if the last check is more than 3 h old. **Background job:** every run, on a 3 h period (§5.4). **Never** when Daily Bing wallpaper is off. | FR-WP-02, FR-WP-13 |
-| Gates | Skip while Data Saver or Battery Saver is on. Skip on a metered network when "Wi-Fi only" is set. | FR-WP-06 |
-| Daily cap | At most 8 checks per day, retries included. | NFR-PWR-01 |
-| Retries | After a failure, retry after 15 min, then 1 h, then 4 h. At most 3 retries a day; the count resets on success. No error UI. | FR-WP-11 |
-| What to download | The newest feed entry whose identity is not already cached. Identity is the hash, or the start date plus market. On first run and after gaps, request 8 entries. | FR-WP-02, IF-WP-01, IF-WP-04 |
-| Which size | The portrait `{urlbase}_1080x1920.jpg`, falling back to the landscape image. `Crop.center(image, screen)` returns the centered rectangle with the screen's aspect ratio. Images are never scaled non-uniformly. | FR-WP-04 |
-| What to apply | The newest cached image, unless an image is pinned. Pinned means new images are still cached but not applied. | FR-WP-01, FR-WP-08, FR-TOP-03 |
-| When to apply | Immediately in the background. While Home is visible, after the current gesture ends, with a crossfade (§6.6). | FR-ANIM-10 |
+| When to check | **Home shown:** check if the last check is more than 3 h old. **Background job:** every run, on a 3 h period (§5.4). **The user's own requests** ("Refresh now", turning Daily on, a new market): always. **Never** when Daily Bing wallpaper is off. One check runs at a time; a job run that arrives meanwhile ends at once, and a "Refresh now" waits for the running check and then runs. | FR-WP-02, FR-WP-13 |
+| Gates | Skip while offline, or while Data Saver or Battery Saver is on. Skip on a metered network when "Wi-Fi only" is set. A skipped check asks nothing of the network and doesn't count, so 3 days offline cause no failures and no retries (AC-04). | FR-WP-06, FR-WP-11 |
+| Daily cap | At most 8 checks per day, retries included, counted in the device's time zone. The user's own requests count but aren't refused. | NFR-PWR-01 |
+| Retries | After a failure, retry after 15 min, then 1 h, then 4 h: consecutive failures choose the delay, and a success starts them over. At most 3 retries per calendar day, whatever succeeded in between. No error UI: the current wallpaper stays. | FR-WP-11 |
+| What to download | Every feed entry whose identity is not already cached, newest first, so the 8 entries asked for on a first run and after a gap of more than a day fill the cache; otherwise 1 entry is asked for. Identity is the hash, or the start date plus market, and must be a safe file name (§5.3). The first image that can't be stored ends the check as a failure, keeping the ones stored. | FR-WP-02, FR-WP-07, IF-WP-01, IF-WP-04 |
+| Which size | The portrait version, falling back to the landscape one (`ImageVariant`; the adapter builds the addresses, #15). `Crop.center(image, screen)` returns the largest centered rectangle with the screen's aspect ratio, from the image size stored with the entry. Images are never scaled non-uniformly. | FR-WP-04 |
+| Which images are valid | An empty image, one over 5 MB, or one that doesn't decode in full (`SystemWallpaper.inspect`) is discarded before it is stored. | FR-WP-14, IF-WP-05 |
+| What to apply | The newest cached image, unless an image is pinned (`inUse`). Pinned means new images are still cached but not applied. | FR-WP-01, FR-WP-08, FR-TOP-03 |
+| When to apply | While the launcher is hidden: at once, from the reducer (`applyIfHidden`, after a check, a pin, Daily or `HomeHidden`). While Home is visible: Presentation sends `ApplyWallpaperNow` once no finger is down and nothing is settling, with a crossfade (§6.6). `LauncherState.wallpaperDue` is the image waiting. One the system refuses isn't tried again until it is chosen or another image is due. "Also use on lock screen" applies it to both screens; turning it on puts the current image on the lock screen. | FR-WP-01, FR-WP-05, FR-ANIM-10 |
 | Until the first image | The system wallpaper is left untouched. | FR-WP-12 |
-| Cache eviction | Keep the 8 newest images plus the pinned and the applied one. Then evict the oldest unpinned images until the cache is under 25 MB. | FR-WP-07, NFR-PWR-04, NFR-REL-02 |
-| Turning Daily off | Cancel the job, delete the cache and leave the system wallpaper as it is. | FR-WP-13 |
-| Market | `MarketResolver(locale)` tries an exact language-and-region match against the supported-market table, then the language's default market, then `en-US`. | FR-WP-03, Q-5 |
+| Cache eviction | Keep the 8 newest images plus the pinned, applied and in-use ones. Then evict the oldest unprotected images until the cache is under 25 MB. Evicted images are deleted. | FR-WP-07, NFR-PWR-04, NFR-REL-02 |
+| Turning Daily off | Cancel the job, stop a running check, delete the cache and leave the system wallpaper as it is. The Ambiences row and the Events card go, and Wallpaper details closes. Turning it on again schedules the job and checks at once. | FR-WP-13 |
+| Market | `MarketResolver.resolve(setting, locale)`: a chosen market wins. Automatic tries an exact language-and-region match against Bing's documented market codes, then the language's default market (Norwegian `nb` and `nn` read `no-NO`; Traditional Chinese reads `zh-TW`), then `en-US`. A new market is checked at once. | FR-WP-03, Q-5 |
 
 ### 4.4 Appearance and ambience
 
@@ -378,7 +382,7 @@ With "Covers show: Recently used" (FR-HOME-10, C), Home shows `UsageSource.recen
 - There are three documents. Each is a `VersionedDocument` over a `@Serializable` class, and `VersionedDocument` stamps a `schemaVersion` key into the JSON:
   - `layout.json` (`LayoutDoc`), included in backup;
   - `settings.json` (`SettingsDoc`), included in backup;
-  - `wallpapers.json`, the cache index, which is not backed up (SRS §8). It arrives with #14.
+  - `wallpapers.json` (`WallpaperIndexDoc`), the cache index, which is not backed up (SRS §8). Its status fields sit at the top level, beside the entries and the pin, so one unreadable value falls back alone. Times and dates are ISO-8601 strings. *Built in #14.*
 - **Reading.** Parse to a `JsonObject`, then run the pure migrations `vN → vN+1` up to the current version (AR-07). Then decode leniently:
   - unknown keys are ignored;
   - invalid enum values fall back to their default;
@@ -402,10 +406,10 @@ Each external dependency from AR-03 has exactly one port and one adapter.
 |---|---|---|---|
 | `AppCatalog` | `LauncherAppsCatalog` | **Apps:** `LauncherApps` (`getActivityList`, `Callback`, `startMainActivity`, `startAppDetailsActivity`, `getShortcuts`), `UserManager` profiles and serial numbers; the locale and managed-profile broadcasts. **Icons:** `LauncherActivityInfo.getIcon`, and `PackageManager.getUserBadgedIcon` for the profile badge. **Actions:** the `ACTION_DELETE` intent for uninstall; intents for links, the system Settings app and access screens. **Defaults:** resolves the default phone, messaging, browser and camera apps. | FR-GEN-05, FR-GEN-06, FR-GEN-10, FR-HOME-04, FR-HOME-07, FR-HOME-09, FR-GRID-06, FR-GRID-10, FR-EVT-03, FR-TOP-04 |
 | `LocalStorage` | `FileStorage` | `filesDir` for layout and settings; `noBackupFilesDir/wallpapers/` for images and the index; `android.util.AtomicFile`. | FR-GEN-07, FR-WP-07, NFR-PRIV-03, NFR-REL-03, NFR-PWR-04 |
-| `SystemWallpaper` | `AndroidSystemWallpaper` | **Validate and crop:** `ImageDecoder` checks the image and decodes only the crop rectangle; `setBitmap` then applies it to `FLAG_SYSTEM`, plus `FLAG_LOCK` if enabled. **Identify:** `getWallpaperId`, `getWallpaperColors`. **Parallax:** `setWallpaperOffsets`. | FR-WP-01, FR-WP-04, FR-WP-05, FR-WP-12, FR-WP-14, FR-AMB-01, FR-AMB-03, FR-ANIM-14 |
-| `BingFeed` | `HttpsBingFeed` | `HttpsURLConnection` and the kotlinx-serialization parser (§5.2) | IF-WP-01 to IF-WP-06, FR-WP-02 |
+| `SystemWallpaper` | `AndroidSystemWallpaper` | **Validate:** `ImageDecoder` decodes the whole image, failing on a partial one, and samples it at most 128 pixels across. **Crop and apply:** `ImageDecoder.setCrop` decodes only the crop rectangle; `setBitmap` then applies it to `FLAG_SYSTEM`, plus `FLAG_LOCK` if enabled, or to `FLAG_LOCK` alone. **Screen size:** the default display's real size, in portrait. **Identify:** `getWallpaperId`; `getWallpaperColors` arrives with #16. **Parallax:** `setWallpaperOffsets`, deferred. Images are passed as bytes, so one is checked before it is stored. *Built in #14.* | FR-WP-01, FR-WP-04, FR-WP-05, FR-WP-12, FR-WP-14, FR-AMB-01, FR-AMB-03, FR-ANIM-14 |
+| `BingFeed` | `HttpsBingFeed` | `HttpsURLConnection` and the kotlinx-serialization parser (§5.2). `fetchImage(entry, variant)` builds the portrait or landscape address from `urlBase`. A stub that always fails until #15. | IF-WP-01 to IF-WP-06, FR-WP-02 |
 | `WallpaperScheduler` | `JobSchedulerWallpaperScheduler` with `WallpaperJobService` | `JobScheduler` (§5.4) | FR-WP-02, FR-WP-06, NFR-PWR-01, NFR-PWR-02, AR-06 |
-| `OsSettings` | `AndroidOsSettings` | **Home role:** `RoleManager.isRoleHeld` and `createRequestRoleIntent(ROLE_HOME)`, started *for result* over the visible Activity, because the prompt identifies its caller through `getCallingPackage()`. **Theme:** `Configuration.uiMode` via `ComponentCallbacks`. **Motion:** `Settings.Global.ANIMATOR_DURATION_SCALE` via a `ContentObserver`, registered only while collected; `animationsOff` is true when it is 0 (*built in #13*). **Network and power:** `ConnectivityManager` (metered status, `restrictBackgroundStatus`), `PowerManager.isPowerSaveMode`. **Clock:** time-tick, time-zone and 12/24-hour changes. | FR-THM-03, FR-ANIM-15, FR-WP-06, FR-GEN-02, FR-HOME-02, NFR-L10N-02 |
+| `OsSettings` | `AndroidOsSettings` | **Home role:** `RoleManager.isRoleHeld` and `createRequestRoleIntent(ROLE_HOME)`, started *for result* over the visible Activity, because the prompt identifies its caller through `getCallingPackage()`. **Theme:** `Configuration.uiMode` via `ComponentCallbacks`. **Motion:** `Settings.Global.ANIMATOR_DURATION_SCALE` via a `ContentObserver`, registered only while collected; `animationsOff` is true when it is 0 (*built in #13*). **Network and power** (*built in #14*): `ConnectivityManager` (connected means the default network reaches the internet and is validated, so a captive portal doesn't count; `isActiveNetworkMetered`; Data Saver from `restrictBackgroundStatus`), `PowerManager.isPowerSaveMode`. **Clock:** time-tick, time-zone and 12/24-hour changes. | FR-THM-03, FR-ANIM-15, FR-WP-06, FR-GEN-02, FR-HOME-02, NFR-L10N-02 |
 | `NotificationSource` (optional) | `ListenerNotificationSource` with `LauncherNotificationListener` | `NotificationListenerService` (active notifications, ranking, dismissal, content intents), `NotificationManager.isNotificationListenerAccessGranted`, the listener's access screen in `Settings` | FR-EVT-04 to FR-EVT-07, FR-GRID-11, FR-ONB-04, NFR-PRIV-05 |
 | `UsageSource` (optional) | `UsageStatsSource` | `UsageStatsManager.queryEvents`, `AppOpsManager.unsafeCheckOpNoThrow` | FR-HOME-10 |
 
@@ -431,7 +435,7 @@ Each external dependency from AR-03 has exactly one port and one adapter.
   - `open` sends the content intent with the launcher's right to start activities while it is visible (`setPendingIntentBackgroundActivityStartMode`: `ALLOW_IF_VISIBLE` on API 36+, `ALLOWED` on 34–35), growing from the tapped row, and then cancels an auto-cancelling notification as the shade would. Without an intent, it opens the app.
   - `dismiss(refs)` cancels only those that are dismissible and unchanged since they were shown (same post time), so a message that arrives under the same key during the remorse countdown isn't cleared unseen.
   - `requestAccess` opens the listener's own detail screen on API 30+ (`ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS`), else the list of listeners. It lives in this port, not in `AppCatalog.open`, because only this adapter knows the listener, which keeps it removable (AR-09).
-- **Cropping is done by the launcher** (FR-WP-04). The image is decoded only inside the crop rectangle and handed to the system at the screen's exact aspect ratio, so OEM handling of crop hints doesn't matter (R-5). When the source is wide enough, the crop keeps up to 5% extra width for the parallax of FR-ANIM-14.
+- **Cropping is done by the launcher** (FR-WP-04). The image is decoded only inside the crop rectangle and handed to the system at the screen's exact aspect ratio, so OEM handling of crop hints doesn't matter (R-5). Keeping extra width for the parallax of FR-ANIM-14 is deferred with it (§6.6).
 
 ### 5.2 Network policy (Bing feed)
 
@@ -464,8 +468,11 @@ URL building, the allowlist and redirect decision, the counting stream and the J
 - **The one job** (AR-06). `WallpaperJobService` is the only background job. It is a periodic `JobInfo` with:
   - a 3-hour period;
   - a required network type of *any*, or *unmetered* when "Wi-Fi only" is set;
-  - `setPersisted(true)`, so the job survives reboots.
-- **Retries** use the same service with a one-off job that has `setMinimumLatency(backoff)`.
+  - `setPersisted(true)`, so the job survives reboots;
+  - an estimate of about 1 MB to download, a hint for the system.
+- **Scheduled once.** The store asks for the job on every start. The adapter leaves a pending job with the same period and network condition alone, recognized by its extras (a version and the Wi-Fi-only flag), because scheduling it again would restart its period. *Built in #14.*
+- **Retries** use the same service with a one-off job that has `setMinimumLatency(backoff)`, under its own job ID, so a new retry replaces a waiting one. Turning Daily off cancels both.
+- **Each run ends.** The store finishes the job's run when its check ends, even one stopped by turning Daily off, and at once when no check starts.
 - **Data Saver and Battery Saver** are checked by `WallpaperPolicy` when the job runs, because JobScheduler has no constraint for them (FR-WP-06).
 - **One code path.** The job and the "Home shown" trigger dispatch the same action, so they share the last-check time and the 8-checks-a-day cap (NFR-PWR-01).
 - **Nothing else runs in the background.** There are no wake locks, alarms, foreground services or long-lived connections (NFR-PWR-02).
@@ -484,10 +491,10 @@ URL building, the allowlist and redirect decision, the counting stream and the J
 
 | Permission | Kind | Why |
 |---|---|---|
-| `INTERNET` | Normal | Bing feed (FR-WP-01) |
-| `ACCESS_NETWORK_STATE` | Normal | Metered and Data Saver state (FR-WP-06) |
-| `SET_WALLPAPER` | Normal | Applying the image (FR-WP-01, FR-WP-05) |
-| `RECEIVE_BOOT_COMPLETED` | Normal | Keeps the wallpaper job across reboots (FR-WP-02) |
+| `INTERNET` | Normal | Bing feed (FR-WP-01). Arrives with the feed client (#15). |
+| `ACCESS_NETWORK_STATE` | Normal | Metered and Data Saver state (FR-WP-06). Declared in the `:adapters` manifest (#14). |
+| `SET_WALLPAPER` | Normal | Applying the image (FR-WP-01, FR-WP-05). Declared in the `:adapters` manifest (#14). |
+| `RECEIVE_BOOT_COMPLETED` | Normal | Keeps the wallpaper job across reboots (FR-WP-02); `JobInfo.setPersisted` requires it. Declared in the `:adapters` manifest (#14). |
 | `REQUEST_DELETE_PACKAGES` | Normal | Required for apps targeting API 28+ to open the system uninstall confirmation (FR-GRID-06). Declared in the `:adapters` manifest, next to `LauncherAppsCatalog`. |
 | `PACKAGE_USAGE_STATS` | Special access, granted by the user | Recently used covers only (FR-HOME-10, optional) |
 | `EXPAND_STATUS_BAR` | Normal | Only if FR-TOP-07 ships (R-2) |
@@ -525,14 +532,16 @@ URL building, the allowlist and redirect decision, the counting stream and the J
 Drawing order, back to front:
 
 1. System wallpaper
-2. Dim and blur
-3. Home
-4. Events (enters sideways)
-5. App Grid (enters from the bottom)
-6. Top Menu (enters from the top)
-7. Overlays (folder, context menu). The keyboard is the system's own window, over all of them.
-8. Remorse banner
-9. Tutorial hints
+2. The outgoing wallpaper, during a crossfade (§6.6)
+3. Dim and blur
+4. Home
+5. Events (enters sideways)
+6. App Grid (enters from the bottom)
+7. Top Menu (enters from the top)
+8. Overlays (folder, context menu). The keyboard is the system's own window, over all of them.
+9. Wallpaper details (fades in over Home)
+10. Remorse banner
+11. Tutorial hints
 
 Each way out of Home is a *track* with its own `Animatable<Float>`, owned by the gesture controller: the App Grid's progress from 0 to 1, the Events carousel, and the Top Menu's progress from 0 to 1 (§6.3). The Domain's `LauncherState` says which layer is the target.
 
@@ -580,6 +589,7 @@ The release decision, direction lock, rubber band and pull-depth mapping are pur
 | `SwipeToDismiss` | *Built in #10.* Content that a sideways swipe dismisses, such as a notification in Events. Recognized like the launcher's swipes (§6.3): watched before the content, and taken once it moves sideways past the slop before the long-press timeout; a vertical move is left to the list and the pulley menu. It follows the finger and fades as it goes; released past 30% of its width or flung, it slides out and then dismisses, otherwise it springs back with the release spring. While enabled, it registers in `SidewaysClaims`, so the swipe isn't taken as one between views. | FR-EVT-05, FR-GEST-01 |
 | Events page | *Built in #10* (`ui/events/EventsScreen`). A `PulleyMenu` around a list: today's date as the `PageHeader`, the wallpaper card, the notifications card, the notifications grouped by app, or "No new events". The **wallpaper card** is glass with the image's thumbnail (`WallpaperImages`, a glass placeholder until it loads), "Today's wallpaper", the title and copyright text, and "Learn more"; tapping the card opens Wallpaper details. The **notifications card** explains the feature, says notifications are never saved or sent, and offers "Turn on" and "Hide". Each **group** shows the app's `AppIcon` (its initial on glass for an app the catalog doesn't list) and name; each **notification** is a glass row with its title, time (the time of day if today, else the date) and up to three lines of text, inside a `SwipeToDismiss` when dismissible, with "Dismiss" as an accessibility action. Rows waiting to be cleared are faded. Items fade in and out and move over the Medium duration. | FR-EVT-02 to FR-EVT-08, FR-WP-10 |
 | Top Menu | *Built in #11* (`ui/topmenu/TopMenu`). A glass sheet rounded at the bottom (`Shapes.TopSheet`), padded by the top safe-drawing insets, whose content scrolls when it doesn't fit, as at the largest font sizes. Its labeled parts are headings. **Appearance:** System, Light and Dark as radio buttons; the current one is outlined in the highlight color (`Sizes.SelectedOutline`). **Ambiences**, while `showsAmbiences`: a row with "Daily" and then each cached image's thumbnail (`WallpaperImages`, glass until it loads), portrait (`Sizes.AmbienceWidth`, `AmbienceAspectRatio`) and read by its title, as radio buttons with the active one outlined. **Shortcuts:** "System settings", and "Wallpaper details" once there is a wallpaper; "Launcher settings" arrives with #18. | FR-TOP-02, FR-TOP-03, FR-TOP-04, FR-AMB-04, NFR-A11Y-01, NFR-A11Y-04 |
+| Wallpaper details | *Built in #14* (`ui/wallpaper/WallpaperDetails`). A page that fades in over the `dim` (Medium duration) when the layer is `WallpaperDetails`; the tracks beneath go back to Home (`LayerGestureController.follow`), the root takes no swipes while it is open, and a layer beneath it takes every touch, so nothing behind can be pressed. Back and Home fade it out onto Home. A `PulleyMenu` around a scrolling column: "Wallpaper details" as the `PageHeader`; the image in a glass portrait frame (`Sizes.WallpaperPreviewWidth`, the screen's 9:16 shape, from `WallpaperImages`); a glass card with the title, the copyright text, the date (ICU `yMMMMd`), "Market:" with the market's name in the device language, and "Learn more" (`TextButton`); then "Updated ⟨date, time⟩", or "Checking for a new image…" while "Refresh now" runs, in a polite live region. Pulley items: "Refresh now", then "Keep this wallpaper" or, once kept, "Resume daily"; "Wallpaper settings" arrives with Settings (#18). A failed check shows no error: the time of the last success simply stays. | FR-WP-08, FR-WP-09, FR-WP-10, FR-WP-11, AC-04 |
 | `GestureHint` | *Built in #13* (`ui/components/GestureHint`). A glowing touch point (a radial highlight, `Sizes.HintTouchPoint`) that fades in, traces a gesture from one point to another (fractions of its box) over the Long duration, and fades out. Each time the launcher comes on screen it does so `Motion.HINT_REPEATS` (3) times, after a pause each, and then rests, so an idle Home draws no frames. Under reduced motion it stays still where the gesture starts. Decorative: the text beside it says what to do. Empty Home's "Swipe up to see your apps" uses it (FR-HOME-08); the tutorial (#19) will too. | FR-ANIM-13, FR-ONB-02 |
 
 **Haptics** (*#12 made them go through one gate*)
@@ -633,12 +643,13 @@ The release decision, direction lock, rubber band and pull-depth mapping are pur
   2. The adapter applies the new system wallpaper underneath.
   3. The overlay fades out over Ambient (800 ms).
   - If the outgoing wallpaper wasn't set by the launcher, it isn't cached, and the change is instant.
-  - *#13 built the theme's part:* the highlight moves over Ambient (§6.5). The overlay and the rule that nothing is applied mid-gesture arrive with #14, which applies wallpapers.
+  - *#13 built the theme's part:* the highlight moves over Ambient (§6.5).
+  - *Built in #14* (`ui/wallpaper/WallpaperCrossfade`). While `LauncherState.wallpaperDue` names an image, Presentation waits until no finger is down (an Initial-pass observer at the root that takes nothing) and no track is settling, so nothing is applied mid-gesture. It decodes the applied image at the screen's size off the main thread, waits again in case a gesture started meanwhile, and draws it center-cropped in the root's `drawBehind`, beneath the dim, so every surface stays above it. Then it sends `ApplyWallpaperNow`, and once the image is applied, or refused, fades the cover out with `LauncherMotion.wallpaper()` (Ambient, at most 100 ms under reduced motion). There is no cover while the App Grid is open, because the window's blur would show it sharp over a blurred wallpaper; the change happens under the dim and blur.
 - **Blur and dim** (FR-GRID-01, NFR-COMP-03).
   - On API 31+, while cross-window blur is available, the window's background blur radius (`Window.setBackgroundBlurRadius`) follows App Grid progress, up to 32 dp (`ui/motion/WindowBlur`). Availability is checked with `WindowManager.isCrossWindowBlurEnabled` and observed with `addCrossWindowBlurEnabledListener`.
   - Otherwise the dim alone shows. That covers API 29–30, Battery Saver and devices without blur support. #26 makes it stronger there (NFR-COMP-03).
   - See R-1.
-- **Parallax** (FR-ANIM-14, C). Moving between Home and Events sets wallpaper offsets through `SystemWallpaper`. *Deferred past #14:* holding it to 5% of the screen width needs the wallpaper's width beyond the screen, which the launcher knows only for images it crops itself.
+- **Parallax** (FR-ANIM-14, C). Moving between Home and Events sets wallpaper offsets through `SystemWallpaper`. *Deferred past #14:* holding it to 5% of the screen width needs the wallpaper's width beyond the screen, which the launcher knows only for images it crops itself, and #14 crops to exactly the screen's shape.
 
 ### 6.7 Accessibility
 
@@ -800,7 +811,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 | Requirements | Level | Verified by |
 |---|---|---|
 | FR-TOP-01, FR-TOP-02, FR-TOP-04, FR-TOP-05, FR-TOP-06 | U, I, R | `TopMenuReducerTest`, `LauncherStoreTest`: the layer, Back and Home, the appearance saved, System settings opened. `GestureMathTest`: who takes a swipe down or up, and each track's direction. `TopMenuTest`: pull down with peek-cancel; the status bar left to the system; appearance switch; shortcuts; every way to close, and nothing pressed beneath; long-press on empty Home, but not on a cover. `SystemIntegrationTest`: Back and Home close it; System settings opens over it and Back returns. Review items: on a device. "Launcher settings" (FR-TOP-04) arrives with #18. |
-| FR-TOP-03 | U, I | `TopMenuReducerTest`: pinning and Daily; #14 adds `WallpaperPolicyTest`'s. `TopMenuTest`: Ambiences row order, the active one chosen, hidden when Bing is off or nothing is cached. |
+| FR-TOP-03 | U, I | `TopMenuReducerTest`: pinning and Daily. `WallpaperReducerTest`, `WallpaperStoreTest`: the pinned image is applied and saved, and Daily applies the newest. `TopMenuTest`: Ambiences row order, the active one chosen, hidden when Bing is off or nothing is cached. |
 | FR-TOP-07 | — | Could; deferred to the Settings page (#18), which shows the setting, and only if the shade can still be opened on the target API level (R-2). |
 
 **Gestures (SRS §4.8)**
@@ -822,7 +833,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 | FR-ANIM-02, FR-ANIM-05, FR-ANIM-06, FR-ANIM-07, FR-ANIM-08, FR-ANIM-09, FR-ANIM-12 | U, R | `LauncherReducerTest`: the launch grows only without reduced motion. `MotionTokensTest`: durations and easings. Motion review: a screen recording of each animation, checked against the SRS §4.9 tokens. |
 | FR-ANIM-03, FR-ANIM-04 | U, I, R | `MotionTokensTest`: 96%. `MotionTest`: Home settles from 96% after the launcher returns, and not on the first start; a press glows on the next frame inside the scrolling grid and is gone a Short duration after release. Review: recordings. |
 | FR-ANIM-13 | I, R | `HomeTest`: empty Home shows the hint. Review: it traces three times, then rests. |
-| FR-ANIM-10 | U, I, R | `MotionTest`: the highlight moves over Ambient. #14: `WallpaperPolicyTest`, never applied during a gesture. Review: crossfade. |
+| FR-ANIM-10 | U, I, R | `MotionTest`: the highlight moves over Ambient; a new wallpaper is applied only once the finger lifts. `MotionTokensTest`: the cover fades over Ambient. `WallpaperReducerTest`: while Home is shown, only `ApplyWallpaperNow` applies. Review: crossfade. |
 | FR-ANIM-11 | I | `MotionTest`: every color crossfades over Long, keeping what was remembered. #17: `AppearanceTest`, switching appearance keeps the view, scroll position and query (AC-01). |
 | FR-ANIM-15 | U, A, I, R | `MotionTokensTest`: reduced timings. `LayerRulesTest`: every spec comes from the tokens. `LauncherReducerTest`, `LauncherStoreTest`: either source reduces motion, and launches then don't animate. `AndroidOsSettingsTest`: the animator scale at 0 is reported. `NavigationTest`: with system animations removed, and with Animations Reduced, drags follow the finger and views change within 100 ms (AC-09). `MotionTest`: colors and folders. Review: on a device. |
 
@@ -830,10 +841,10 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 
 | Requirements | Level | Verified by |
 |---|---|---|
-| FR-WP-01, FR-WP-02, FR-WP-03, FR-WP-04, FR-WP-06, FR-WP-07, FR-WP-08, FR-WP-11, FR-WP-12 | U | `WallpaperPolicyTest`, `MarketResolverTest`, `CropTest`. |
-| FR-WP-05, FR-WP-13 | U, A | `WallpaperPolicyTest`. `AndroidSystemWallpaperTest`: applies to home and lock screens; turning Daily off deletes the cache and cancels the job. |
-| FR-WP-09, FR-WP-10 | I | `WallpaperDetailsTest`: title, copyright, date, market, last update. `EventsTest`: the card's title and copyright. |
-| FR-WP-14 | A | `AndroidSystemWallpaperTest`: rejects truncated, non-image and oversized fixtures. |
+| FR-WP-01, FR-WP-02, FR-WP-03, FR-WP-04, FR-WP-06, FR-WP-07, FR-WP-08, FR-WP-11, FR-WP-12 | U, A | `WallpaperPolicyTest`, `MarketResolverTest`, `CropTest`, `WallpaperReducerTest`. `WallpaperStoreTest` through the port fakes, in virtual time: the first run fills the cache and applies the newest image, cropped; checks on Home after 3 hours and on every job run; nothing downloaded twice; the gates; the portrait falling back to the landscape image; the Automatic and chosen markets; the pin through a restart. `JobSchedulerWallpaperSchedulerTest`: the 3-hour job with its network condition, and retries. `AndroidOsSettingsTest`: Battery Saver and Data Saver. |
+| FR-WP-05, FR-WP-13 | U, A | `WallpaperReducerTest`, `WallpaperStoreTest`: both screens, the lock screen when turned on; turning Daily off stops a running check, deletes the cache, cancels the job and leaves the system wallpaper alone. `AndroidSystemWallpaperTest`: applies to home and lock screens (on an emulator, or with `-e changeWallpaper true`). `JobSchedulerWallpaperSchedulerTest`: cancelling removes every check. |
+| FR-WP-09, FR-WP-10 | I | `WallpaperDetailsTest`: title, copyright, date, market, last update, "Learn more", the pulley menu and its header actions, Back. `EventsTest`: the card's title and copyright. |
+| FR-WP-14 | U, A | `WallpaperStoreTest`: invalid, truncated and oversized images are never stored or applied. `AndroidSystemWallpaperTest`: the platform decoder rejects truncated and non-image bytes. |
 
 **Ambience (SRS §4.11)**
 
@@ -901,7 +912,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 | Requirements | Level | Verified by |
 |---|---|---|
 | NFR-REL-01 | S, I | 8-hour `monkey` run; the full instrumented suite. |
-| NFR-REL-02 | U, R | `WallpaperPolicyTest`: the applied and pinned images are never evicted. |
+| NFR-REL-02 | U, R | `WallpaperPolicyTest`: the applied and pinned images are never evicted. `WallpaperStoreTest`: failures and days offline keep the last image. |
 | NFR-REL-03 | U | `PersistenceTest`: corrupt, partial and newer-version files. |
 | NFR-REL-04 | I | The instrumented suite run in airplane mode. |
 | NFR-REL-05 | I | `AppGridTest`: installing an app while the grid is open keeps the scroll position (AC-07). |
@@ -910,7 +921,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 
 | Requirements | Level | Verified by |
 |---|---|---|
-| NFR-PWR-01, NFR-PWR-04 | U | `WallpaperPolicyTest`: daily cap and cache budget. |
+| NFR-PWR-01, NFR-PWR-04 | U, A | `WallpaperPolicyTest`: daily cap and cache budget. `WallpaperStoreTest`: at most 8 checks and 3 retries a calendar day over 3 days of failures. `JobSchedulerWallpaperSchedulerTest`: a 3-hour period. |
 | NFR-PWR-02, NFR-PWR-03 | R | No wake locks, alarms or foreground services; data estimate (§5.4). |
 
 **Privacy and security (SRS §6.4)**
@@ -962,7 +973,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 | AR-01 | U, B | Module graph (§3.1); `LayerRulesTest`. |
 | AR-02, AR-04, AR-05 | R | One store; one motion controller and one token set; no server, accounts, plugins or remote configuration. |
 | AR-03, AR-09 | U | Every port has a fake in the `:domain` test fixtures. Store tests run with `Disabled` optional sources. |
-| AR-06 | R | One `JobService` in the merged manifest. |
+| AR-06 | A, R | `JobSchedulerWallpaperSchedulerTest`: one periodic job and one retry. Review: one `JobService` in the merged manifest. |
 | AR-07 | U | `PersistenceTest`: migrations. |
 | AR-08 | B, R | `checkDependencies`; §7 updated in the same PR. |
 
@@ -972,8 +983,8 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 |---|---|---|
 | AC-01 | I | `AppearanceTest`: fresh install in dark theme, then switch the system theme. |
 | AC-02 | I | `AppearanceTest`: Appearance set to Light while the device is dark. |
-| AC-03 | U, R | `WallpaperPolicyTest` with a fake feed and clock. On-device check with a real network. |
-| AC-04 | U, I | `WallpaperPolicyTest`: 3 days of failures in virtual time. `WallpaperDetailsTest`: last update shown. |
+| AC-03 | U, I, R | `WallpaperStoreTest` with a fake feed and a virtual clock: a new image is applied by the job within 3 hours, or when Home shows after 3 hours, once Presentation is ready. `MotionTest`: after the gesture. On-device check with a real network, once the feed client (#15) lands. |
+| AC-04 | U, I | `WallpaperStoreTest`: 3 days offline and 3 days of failures in virtual time keep the image and the last success. `WallpaperDetailsTest`: last update shown. |
 | AC-05 | I | `NavigationTest`: 20% and a slow release peeks; 40%, or a short fling, opens the App Grid. |
 | AC-06 | I | `EventsTest`: a slow pull ticks for each item and chooses "Clear notifications"; the banner cancels it. |
 | AC-07 | I, R | `AppGridTest`: a catalog change while the grid is scrolled keeps every item where it is and adds the new app at the end. A real install is a review item. |

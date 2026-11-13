@@ -29,9 +29,7 @@ import io.github.twonet.selfish.R
 import io.github.twonet.selfish.domain.Verifies
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.Settings
-import io.github.twonet.selfish.domain.model.WallpaperEntry
 import io.github.twonet.selfish.domain.ports.ClockInfo
-import io.github.twonet.selfish.domain.ports.ImageId
 import io.github.twonet.selfish.domain.ports.NotificationItem
 import io.github.twonet.selfish.domain.remorse.Destructive
 import io.github.twonet.selfish.domain.state.Action
@@ -75,7 +73,7 @@ class EventsTest {
     private val mail = apps[1]
     private val now = Instant.parse("2026-11-13T14:05:00Z")
     private val clock = ClockInfo(now, ZoneId.of("UTC"), is24Hour = true)
-    private val wallpaper = WallpaperEntry(ImageId("20261113"), "A lighthouse at dusk", "© A Photographer", "https://www.bing.com/search?q=lighthouse")
+    private val wallpaper = TestLauncher.wallpaper("20261113", "A lighthouse at dusk", "© A Photographer", "https://www.bing.com/search?q=lighthouse")
 
     private fun note(key: String, app: AppEntry, title: String, minutesAgo: Long, clearable: Boolean = true): NotificationItem {
         val time = now.minusSeconds(minutesAgo * 60).toEpochMilli()

@@ -23,8 +23,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.twonet.selfish.R
 import io.github.twonet.selfish.domain.Verifies
+import io.github.twonet.selfish.domain.model.AppliedWallpaper
 import io.github.twonet.selfish.domain.model.FolderId
 import io.github.twonet.selfish.domain.model.GridItem
+import io.github.twonet.selfish.domain.model.WallpaperStatus
+import io.github.twonet.selfish.domain.ports.WallpaperId
+import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.Layer
 import io.github.twonet.selfish.ui.TestLauncher.Companion.app
 import io.github.twonet.selfish.ui.TestLauncher.Companion.launcher
@@ -38,8 +42,10 @@ import io.github.twonet.selfish.ui.tokens.Motion
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.time.LocalDate
 import kotlin.math.abs
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -200,6 +206,33 @@ class MotionTest {
     private fun androidx.compose.ui.test.SemanticsNodeInteraction.centerPixel(): Color {
         val pixels = captureToImage().toPixelMap()
         return pixels[pixels.width / 2, pixels.height / 2]
+    }
+
+    @Test
+    @Verifies("FR-ANIM-10")
+    fun aNewWallpaperIsAppliedOnlyOnceTheFingerLifts() {
+        val today = TestLauncher.wallpaper("20261113", "Today", "© Today")
+        val yesterday = TestLauncher.wallpaper("20261112", "Yesterday", "© Yesterday", date = LocalDate.of(2026, 11, 12))
+        launcher.show(
+            launcher(apps).copy(
+                wallpapers = listOf(today, yesterday),
+                wallpaper = yesterday,
+                wallpaperStatus = WallpaperStatus(applied = AppliedWallpaper(yesterday.image, WallpaperId(1))),
+            ),
+        )
+        val root = rule.onNodeWithTag(LauncherTags.ROOT)
+
+        root.performTouchInput { down(center) }
+        rule.waitForIdle()
+        // A new image arrives in the middle of a gesture.
+        launcher.state = launcher.state.copy(wallpaper = today)
+        rule.waitForIdle()
+        assertFalse(Action.ApplyWallpaperNow in launcher.dispatched)
+
+        root.performTouchInput { up() }
+        rule.waitForIdle()
+        assertTrue(Action.ApplyWallpaperNow in launcher.dispatched)
+        assertEquals(today.image, launcher.state.wallpaperWork.applying)
     }
 
     private companion object {

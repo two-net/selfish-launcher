@@ -9,6 +9,7 @@ import io.github.twonet.selfish.domain.ports.SystemScreen
 import io.github.twonet.selfish.domain.remorse.Destructive
 import io.github.twonet.selfish.domain.remorse.REMORSE_DELAY
 import io.github.twonet.selfish.domain.remorse.RemorseQueue
+import io.github.twonet.selfish.domain.wallpaper.CheckTrigger
 import java.text.Collator
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -57,6 +58,9 @@ private fun keepRules(state: LauncherState): LauncherState {
         }
         if (next.remorse?.action is Destructive.ClearNotifications) next = next.copy(remorse = null)
     }
+    // Wallpaper details has nothing to show without a wallpaper, for example
+    // once Daily Bing wallpaper is turned off (FR-WP-13).
+    if (next.layer == Layer.WallpaperDetails && next.wallpaper == null) next = next.copy(layer = Layer.Home)
     return next
 }
 
@@ -64,7 +68,7 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
     is Action.Restored ->
         offerDefaultHome(
             state.copy(layout = action.layout, settings = action.settings, restored = true, firstRun = action.layout == null),
-        )
+        ).then { restoreWallpapers(it, action.wallpapers) }
 
     is Action.CatalogChanged -> {
         val collator = Collator.getInstance()
@@ -122,14 +126,16 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
             Next(state.copy(layer = Layer.Home, overlays = emptyList()))
         }
 
-    Action.HomeShown -> offerDefaultHome(state.copy(homeShown = true))
+    // Showing Home checks for a new wallpaper if the last check is over
+    // 3 hours old (FR-WP-02); the check itself decides, knowing the time.
+    Action.HomeShown -> offerDefaultHome(state.copy(homeShown = true)).then { startCheck(it, CheckTrigger.HomeShown) }
 
     // The launched app is now in front, so the launch is over (FR-GEN-05).
-    Action.HomeHidden -> Next(state.copy(homeShown = false, launching = false))
+    // A wallpaper waiting for a gesture to end can be applied now.
+    Action.HomeHidden -> applyIfHidden(state.copy(homeShown = false, launching = false))
 
-    // #14 adds the wallpaper check here; until then the run ends at once.
-    is Action.ScheduledRunDue ->
-        Next(state, listOf(Effect.FinishRun(action.run)))
+    // The background job checks; its run ends with the check (FR-WP-02).
+    is Action.ScheduledRunDue -> startCheck(state, CheckTrigger.Scheduled, action.run)
 
     is Action.ClockChanged -> Next(state.copy(clock = action.clock))
 
@@ -231,7 +237,7 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
     is Action.RemorseDue ->
         RemorseQueue.due(state.remorse, action.number)?.let { commit(state.copy(remorse = null), it) } ?: Next(state)
 
-    // There is nothing to detail before #14 provides the wallpaper.
+    // There is nothing to detail before the first image is downloaded.
     Action.OpenWallpaperDetails ->
         if (state.wallpaper == null || state.layer == Layer.WallpaperDetails) {
             Next(state)
@@ -326,14 +332,15 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
             Next(state.copy(settings = state.settings.copy(appearance = action.mode)))
         }
 
-    // The chosen image is the one in use until "Daily" is chosen again. #14
-    // adds the effects that apply it and save the pin (FR-TOP-03, FR-WP-08).
+    // The chosen image is the one in use until "Daily" is chosen again; the
+    // pin is saved in the cache index (FR-TOP-03, FR-WP-08). Choosing it
+    // again tries an image the system refused before.
     is Action.PinWallpaper -> {
         val entry = state.wallpapers.firstOrNull { it.image == action.image }
         if (entry == null || !state.settings.dailyWallpaper || (state.pinned == entry.image && state.wallpaper == entry)) {
             Next(state)
         } else {
-            Next(state.copy(pinned = entry.image, wallpaper = entry))
+            applyIfHidden(state.copy(pinned = entry.image, wallpaper = entry, wallpaperWork = state.wallpaperWork.copy(applyFailed = null)))
         }
     }
 
@@ -342,10 +349,36 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
         if (state.pinned == null) {
             Next(state)
         } else {
-            Next(state.copy(pinned = null, wallpaper = state.wallpapers.firstOrNull() ?: state.wallpaper))
+            applyIfHidden(
+                state.copy(
+                    pinned = null,
+                    wallpaper = state.wallpapers.firstOrNull() ?: state.wallpaper,
+                    wallpaperWork = state.wallpaperWork.copy(applyFailed = null),
+                ),
+            )
         }
 
     Action.OpenSystemSettings -> Next(state, listOf(Effect.OpenScreen(SystemScreen.SystemSettings)))
+
+    Action.RefreshWallpaper -> startCheck(state, CheckTrigger.User, refresh = true)
+
+    is Action.WallpaperChecked -> wallpaperChecked(state, action)
+
+    // Presentation is ready: no gesture, and the outgoing image covers the
+    // change (FR-ANIM-10).
+    Action.ApplyWallpaperNow -> applyDue(state)
+
+    is Action.WallpaperApplied -> wallpaperApplied(state, action)
+
+    is Action.WallpaperApplyFailed -> wallpaperApplyFailed(state, action)
+
+    is Action.SetDailyWallpaper -> setDailyWallpaper(state, action.on)
+
+    is Action.SetMarket -> setMarket(state, action.market)
+
+    is Action.SetWallpaperLockScreen -> setLockScreen(state, action.on)
+
+    is Action.SetDownloadOn -> setDownloadOn(state, action.downloadOn)
 }
 
 /**

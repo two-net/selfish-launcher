@@ -8,6 +8,8 @@ import io.github.twonet.selfish.domain.model.FolderId
 import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.model.Settings
+import io.github.twonet.selfish.domain.model.Market
+import io.github.twonet.selfish.domain.model.PixelSize
 import io.github.twonet.selfish.domain.model.WallpaperEntry
 import io.github.twonet.selfish.domain.ports.ImageId
 import io.github.twonet.selfish.domain.ports.NotificationItem
@@ -21,11 +23,15 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import java.time.LocalDate
 
 /** The reducer's rules for Events (SRS §4.6, DESIGN §4.1). */
 @Verifies("AR-02")
 class EventsReducerTest {
-    private val wallpaper = WallpaperEntry(ImageId("20261113_en-US"), "Lighthouse", "© Someone", "https://www.bing.com/search?q=lighthouse")
+    private val wallpaper = WallpaperEntry(
+        ImageId("20261113_en-US"), "Lighthouse", "© Someone", "https://www.bing.com/search?q=lighthouse",
+        LocalDate.of(2026, 11, 13), Market("en-US"), PixelSize(1080, 1920), bytes = 400_000,
+    )
 
     private fun note(key: String, time: Long = 0, clearable: Boolean = true, posted: Long = time) =
         NotificationItem(key, "com.chat", 0, "Chat", "Title $key", "Text $key", time, posted, clearable)

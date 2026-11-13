@@ -140,7 +140,8 @@ class LauncherReducerTest {
         val next = reduce(LauncherState(apps = listOf(app("Maps"))), Action.Restored(layout, settings))
 
         assertEquals(LauncherState(apps = listOf(app("Maps")), layout = layout, settings = settings, restored = true), next.state)
-        assertEquals(emptyList(), next.effects)
+        // With Daily Bing wallpaper on, as by default, its job is scheduled (FR-WP-02).
+        assertEquals(listOf<Effect>(Effect.ScheduleWallpaperJob(wifiOnly = false)), next.effects)
     }
 
     @Test

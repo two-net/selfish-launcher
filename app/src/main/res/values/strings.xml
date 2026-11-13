@@ -73,6 +73,20 @@
     <!-- The Top Menu's shortcut that opens the device's Settings app (FR-TOP-04). -->
     <string name="top_menu_system_settings">System settings</string>
 
+    <!-- Wallpaper details (SRS §4.10); its header is menu_wallpaper_details -->
+    <!-- Wallpaper details' pulley menu item that checks for a new image now (FR-WP-09). -->
+    <string name="menu_refresh_now">Refresh now</string>
+    <!-- Wallpaper details' pulley menu item that keeps the current image instead of a new one every day (FR-WP-08, FR-WP-09). -->
+    <string name="menu_keep_wallpaper">Keep this wallpaper</string>
+    <!-- Wallpaper details' pulley menu item that goes back to a new image every day (FR-WP-08, FR-WP-09). -->
+    <string name="menu_resume_daily">Resume daily</string>
+    <!-- The Bing region the image was published for: %1$s is its name, such as "English (United States)" (FR-WP-09). -->
+    <string name="wallpaper_market">Market: %1$s</string>
+    <!-- When the wallpaper was last updated successfully: %1$s is a date and time (FR-WP-09). -->
+    <string name="wallpaper_updated">Updated %1$s</string>
+    <!-- Shown while "Refresh now" checks for a new image (FR-WP-09). -->
+    <string name="wallpaper_checking">Checking for a new image…</string>
+
     <!-- Remorse timers (FR-GEST-06) -->
     <!-- The banner of a folder about to be removed. -->
     <string name="remorse_remove_folder">Removing folder</string>

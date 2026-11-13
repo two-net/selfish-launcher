@@ -6,6 +6,8 @@ import io.github.twonet.selfish.domain.model.AppId
 import io.github.twonet.selfish.domain.model.AppearanceMode
 import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.model.Settings
+import io.github.twonet.selfish.domain.model.Market
+import io.github.twonet.selfish.domain.model.PixelSize
 import io.github.twonet.selfish.domain.model.WallpaperEntry
 import io.github.twonet.selfish.domain.ports.ImageId
 import io.github.twonet.selfish.domain.ports.SystemScreen
@@ -15,14 +17,15 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import java.time.LocalDate
 
 /** The reducer's rules for the Top Menu (SRS §4.7, DESIGN §4.1). */
 @Verifies("AR-02")
 class TopMenuReducerTest {
     private val maps = AppEntry(AppId("com.maps", "Main", 0), "Maps")
 
-    private val today = WallpaperEntry(ImageId("20261113_en-US"), "Lighthouse", "© Someone", null)
-    private val yesterday = WallpaperEntry(ImageId("20261112_en-US"), "Glacier", "© Someone else", null)
+    private val today = WallpaperEntry(ImageId("20261113_en-US"), "Lighthouse", "© Someone", null, LocalDate.of(2026, 11, 13), Market("en-US"), PixelSize(1080, 1920), 400_000)
+    private val yesterday = WallpaperEntry(ImageId("20261112_en-US"), "Glacier", "© Someone else", null, LocalDate.of(2026, 11, 12), Market("en-US"), PixelSize(1080, 1920), 400_000)
 
     private val home = LauncherState(
         apps = listOf(maps),

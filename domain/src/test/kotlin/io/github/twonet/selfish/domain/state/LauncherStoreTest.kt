@@ -608,8 +608,9 @@ class LauncherStoreTest {
     @Test
     @Verifies("FR-EVT-03")
     fun `Learn more reaches the app catalog, and the card's image is read from storage`() = runTest {
-        storage.writeImage(ImageId("today"), byteArrayOf(1, 2, 3))
         val store = startedStore()
+        // Written after the start, which deletes images the cache index doesn't name.
+        storage.writeImage(ImageId("today"), byteArrayOf(1, 2, 3))
 
         store.dispatch(Action.OpenLink("https://www.bing.com/"))
         runCurrent()

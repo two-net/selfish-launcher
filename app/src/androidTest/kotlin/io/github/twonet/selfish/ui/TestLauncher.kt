@@ -28,6 +28,11 @@ import io.github.twonet.selfish.ui.tokens.DefaultType
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
 import io.github.twonet.selfish.ui.tokens.Sizes
 import kotlin.math.ln
+import java.time.LocalDate
+import io.github.twonet.selfish.domain.ports.ImageId
+import io.github.twonet.selfish.domain.model.WallpaperEntry
+import io.github.twonet.selfish.domain.model.PixelSize
+import io.github.twonet.selfish.domain.model.Market
 
 /**
  * The launcher as the user sees it, for instrumented tests (level I, DESIGN
@@ -107,6 +112,15 @@ class TestLauncher(private val rule: ComposeContentTestRule) {
         private const val PULL_HOLD_MILLIS = 300L
 
         fun app(label: String, removable: Boolean = true) = AppEntry(AppId("pkg.${label.lowercase()}", "Main", 0), label, removable = removable)
+
+        /** A cached image of the day, as #14 stores them (FR-WP-07). */
+        fun wallpaper(
+            id: String,
+            title: String,
+            copyright: String,
+            link: String? = null,
+            date: LocalDate = LocalDate.of(2026, 11, 13),
+        ) = WallpaperEntry(ImageId(id), title, copyright, link, date, Market("en-US"), PixelSize(1080, 1920), bytes = 400_000)
 
         /** A restored launcher on [layer] with [apps] in the grid in that order, and [home] as covers. */
         fun launcher(apps: List<AppEntry>, home: List<AppEntry> = emptyList(), layer: Layer = Layer.Home) = LauncherState(

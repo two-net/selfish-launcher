@@ -25,6 +25,9 @@ object ClockFormat {
     /** The month and day, abbreviated: the time of a notification from before today. */
     const val SHORT_DATE = "MMMd"
 
+    /** The day, month and year, written out: the day a wallpaper image was published (FR-WP-09). */
+    const val LONG_DATE = "yMMMMd"
+
     /** The time skeleton for the device's 12- or 24-hour setting. */
     fun time(is24Hour: Boolean): String = if (is24Hour) TIME_24 else TIME_12
 

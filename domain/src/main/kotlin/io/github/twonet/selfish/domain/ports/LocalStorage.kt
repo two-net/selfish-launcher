@@ -1,5 +1,7 @@
 package io.github.twonet.selfish.domain.ports
 
+import kotlinx.serialization.Serializable
+
 /**
  * Private on-device storage (SRS §8). Documents are small JSON texts;
  * wallpaper images are kept apart, in storage that is never backed up.
@@ -41,6 +43,10 @@ enum class DocName {
     WallpaperIndex,
 }
 
-/** Names one cached wallpaper image. */
+/**
+ * Names one cached wallpaper image: letters, digits, `_` and `-` only, so it
+ * can never name another path (DESIGN §5.3).
+ */
+@Serializable
 @JvmInline
 value class ImageId(val value: String)

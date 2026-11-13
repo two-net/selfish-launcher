@@ -34,6 +34,7 @@ class MotionTokensTest {
         "homeReturn" to homeReturn(),
         "appearance" to appearance(),
         "highlight" to highlight(),
+        "wallpaper" to wallpaper(),
         "hintTrace" to hintTrace(),
         "hintFade" to hintFade(),
     )
@@ -80,6 +81,8 @@ class MotionTokensTest {
             "homeReturn" to Motion.MEDIUM_MILLIS,
             "appearance" to Motion.LONG_MILLIS,
             "highlight" to Motion.AMBIENT_MILLIS,
+            // The outgoing wallpaper fades in step with the highlight (FR-ANIM-10).
+            "wallpaper" to Motion.AMBIENT_MILLIS,
         )
         val actual = full.transitions().filterKeys { it in expected }.mapValues { (_, spec) -> spec.millis().toInt() }
 

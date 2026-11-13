@@ -46,6 +46,10 @@ object Sizes {
     /** The thumbnail of the wallpaper on the Events card (FR-EVT-03). */
     val WallpaperThumbnail: Dp = 64.dp
 
+    /** The image on Wallpaper details (FR-WP-09), portrait like the screen it covers. */
+    val WallpaperPreviewWidth: Dp = 160.dp
+    val WallpaperPreviewAspectRatio: Float = 9f / 16f
+
     /** The width of each tile in the Top Menu's Ambiences row (FR-TOP-03). */
     val AmbienceWidth: Dp = 64.dp
 

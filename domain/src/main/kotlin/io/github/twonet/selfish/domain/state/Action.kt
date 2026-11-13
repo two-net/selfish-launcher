@@ -7,20 +7,27 @@ import io.github.twonet.selfish.domain.model.Bounds
 import io.github.twonet.selfish.domain.model.FolderId
 import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Layout
+import io.github.twonet.selfish.domain.model.DownloadOn
+import io.github.twonet.selfish.domain.model.Market
 import io.github.twonet.selfish.domain.model.Settings
+import io.github.twonet.selfish.domain.model.WallpaperIndex
 import io.github.twonet.selfish.domain.ports.ClockInfo
 import io.github.twonet.selfish.domain.ports.DefaultApps
 import io.github.twonet.selfish.domain.ports.ImageId
 import io.github.twonet.selfish.domain.ports.NotificationItem
 import io.github.twonet.selfish.domain.ports.ScheduledRun
+import io.github.twonet.selfish.domain.ports.WallpaperId
+import io.github.twonet.selfish.domain.wallpaper.CheckResult
+import java.time.Instant
+import java.time.LocalDate
 
 /** Everything that can change [LauncherState]: user actions from Presentation and events from ports. */
 sealed interface Action {
     /**
-     * The saved layout and settings were read at start (FR-GEN-07, FR-GEN-08).
-     * [layout] is `null` when nothing usable was saved.
+     * The saved layout, settings and wallpaper cache index were read at start
+     * (FR-GEN-07, FR-GEN-08). [layout] is `null` when nothing usable was saved.
      */
-    data class Restored(val layout: Layout?, val settings: Settings) : Action
+    data class Restored(val layout: Layout?, val settings: Settings, val wallpapers: WallpaperIndex = WallpaperIndex()) : Action
 
     /** The app catalog reported its current list. */
     data class CatalogChanged(val apps: List<AppEntry>) : Action
@@ -175,4 +182,45 @@ sealed interface Action {
 
     /** The shortcut to the system Settings app (FR-TOP-04). */
     data object OpenSystemSettings : Action
+
+    /** "Refresh now" in Wallpaper details: check for a new image now (FR-WP-09). */
+    data object RefreshWallpaper : Action
+
+    /**
+     * The wallpaper check numbered [number] ended with [result] at [at], on
+     * [day] in the device's time zone. [run] is the background job's run it
+     * belongs to, if any, which ends now (DESIGN §4.3).
+     */
+    data class WallpaperChecked(
+        val number: Int,
+        val result: CheckResult,
+        val at: Instant,
+        val day: LocalDate,
+        val run: ScheduledRun? = null,
+    ) : Action
+
+    /**
+     * Presentation is ready for the due wallpaper: no gesture is in progress,
+     * and the outgoing image covers the screen for the crossfade (FR-ANIM-10,
+     * DESIGN §6.6).
+     */
+    data object ApplyWallpaperNow : Action
+
+    /** The system set [image] as the home screen wallpaper, as [id] (FR-WP-01). */
+    data class WallpaperApplied(val image: ImageId, val id: WallpaperId) : Action
+
+    /** The system couldn't set [image] as the wallpaper; the current one stays (FR-WP-11). */
+    data class WallpaperApplyFailed(val image: ImageId) : Action
+
+    /** "Daily Bing wallpaper" turned [on] or off (FR-SET-02, FR-WP-13). Settings (#18) sends it. */
+    data class SetDailyWallpaper(val on: Boolean) : Action
+
+    /** The Bing market, or Automatic for `null` (FR-SET-03, FR-WP-03). Settings (#18) sends it. */
+    data class SetMarket(val market: Market?) : Action
+
+    /** "Also use on lock screen" turned [on] or off (FR-SET-04, FR-WP-05). Settings (#18) sends it. */
+    data class SetWallpaperLockScreen(val on: Boolean) : Action
+
+    /** "Download on" (FR-SET-05, FR-WP-06). Settings (#18) sends it. */
+    data class SetDownloadOn(val downloadOn: DownloadOn) : Action
 }

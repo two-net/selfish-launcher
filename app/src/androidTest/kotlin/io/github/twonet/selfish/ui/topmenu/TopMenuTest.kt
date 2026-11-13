@@ -33,8 +33,10 @@ import io.github.twonet.selfish.R
 import io.github.twonet.selfish.domain.Verifies
 import io.github.twonet.selfish.domain.model.AppearanceMode
 import io.github.twonet.selfish.domain.model.Settings
+import io.github.twonet.selfish.domain.model.AppliedWallpaper
 import io.github.twonet.selfish.domain.model.WallpaperEntry
-import io.github.twonet.selfish.domain.ports.ImageId
+import io.github.twonet.selfish.domain.model.WallpaperStatus
+import io.github.twonet.selfish.domain.ports.WallpaperId
 import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.Layer
 import io.github.twonet.selfish.domain.state.LauncherState
@@ -50,6 +52,7 @@ import org.junit.runner.RunWith
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import java.time.LocalDate
 
 /**
  * The Top Menu as the user sees it (level I, DESIGN §8.3), through
@@ -72,15 +75,20 @@ class TopMenuTest {
 
     private val apps = ('A'..'I').map { app("App $it") }
 
-    private val today = WallpaperEntry(ImageId("20261113"), "A lighthouse at dusk", "© A Photographer", null)
-    private val yesterday = WallpaperEntry(ImageId("20261112"), "A glacier at noon", "© Another Photographer", null)
-    private val older = WallpaperEntry(ImageId("20261111"), "A desert at dawn", "© A Third Photographer", null)
+    private val today = TestLauncher.wallpaper("20261113", "A lighthouse at dusk", "© A Photographer")
+    private val yesterday = TestLauncher.wallpaper("20261112", "A glacier at noon", "© Another Photographer", date = LocalDate.of(2026, 11, 12))
+    private val older = TestLauncher.wallpaper("20261111", "A desert at dawn", "© A Third Photographer", date = LocalDate.of(2026, 11, 11))
 
     /** The launcher on [layer] with nine covers. */
     private fun at(layer: Layer = Layer.Home) = launcher(apps, home = apps, layer = layer)
 
     /** The Top Menu with three cached images, newest first, and the newest in use. */
-    private fun withAmbiences() = at(Layer.TopMenu).copy(wallpapers = listOf(today, yesterday, older), wallpaper = today)
+    /** The Top Menu with three images cached, today's in use and applied, so nothing is waiting to be. */
+    private fun withAmbiences() = at(Layer.TopMenu).copy(
+        wallpapers = listOf(today, yesterday, older),
+        wallpaper = today,
+        wallpaperStatus = WallpaperStatus(applied = AppliedWallpaper(today.image, WallpaperId(1))),
+    )
 
     private fun show(state: LauncherState, gestureInsets: WindowInsets = TestLauncher.NO_INSETS, fontScale: Float? = null) =
         launcher.show(state, gestureInsets, fontScale)

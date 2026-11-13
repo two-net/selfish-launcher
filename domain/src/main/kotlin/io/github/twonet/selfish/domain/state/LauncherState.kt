@@ -9,13 +9,18 @@ import io.github.twonet.selfish.domain.model.FolderId
 import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.model.Settings
+import io.github.twonet.selfish.domain.model.DownloadOn
 import io.github.twonet.selfish.domain.model.WallpaperEntry
+import io.github.twonet.selfish.domain.model.WallpaperIndex
+import io.github.twonet.selfish.domain.model.WallpaperStatus
 import io.github.twonet.selfish.domain.ports.ClockInfo
 import io.github.twonet.selfish.domain.ports.ImageId
 import io.github.twonet.selfish.domain.ports.NotificationItem
 import io.github.twonet.selfish.domain.ports.NotificationRef
+import io.github.twonet.selfish.domain.ports.WallpaperScreens
 import io.github.twonet.selfish.domain.remorse.Destructive
 import io.github.twonet.selfish.domain.remorse.PendingRemorse
+import io.github.twonet.selfish.domain.wallpaper.CheckTrigger
 
 /**
  * The single source of truth (AR-02). Presentation renders this and nothing
@@ -84,23 +89,31 @@ data class LauncherState(
     /** How many remorse timers have started, so a stale one can be told apart. */
     val remorses: Int = 0,
     /**
-     * The image of the day in use as the wallpaper, for the Events card
-     * (FR-EVT-03, FR-WP-10): the [pinned] one, or else the newest. #14
-     * fills it in; until then it is `null`, and Events shows no card.
+     * The image of the day in use as the wallpaper, for the Events card and
+     * Wallpaper details (FR-EVT-03, FR-WP-09, FR-WP-10): the [pinned] one,
+     * or else the newest. `null` until the first image is downloaded, and
+     * while Daily Bing wallpaper is off; then Events shows no card and the
+     * system wallpaper is left as it is (FR-WP-12, FR-WP-13).
      */
     val wallpaper: WallpaperEntry? = null,
     /**
      * The cached images of the day, newest first, which the Top Menu offers
-     * as ambiences (FR-TOP-03, FR-WP-07). #14 fills it from the cache index;
-     * until then it is empty, and the Ambiences row is hidden.
+     * as ambiences (FR-TOP-03, FR-WP-07). Saved in the cache index.
      */
     val wallpapers: List<WallpaperEntry> = emptyList(),
     /**
      * The cached image chosen as an ambience, which stops daily changes
      * until "Daily" is chosen again (FR-TOP-03, FR-WP-08), or `null` for
-     * Daily. #14 saves it in the cache index and applies it.
+     * Daily. Saved in the cache index.
      */
     val pinned: ImageId? = null,
+    /**
+     * When the wallpaper checks last ran, how many ran today and which image
+     * was applied (DESIGN §4.3). Saved in the cache index.
+     */
+    val wallpaperStatus: WallpaperStatus = WallpaperStatus(),
+    /** Wallpaper work in progress in this process. Not saved. */
+    val wallpaperWork: WallpaperWork = WallpaperWork(),
     /**
      * Whether the user has granted notification access (FR-EVT-07), or
      * `null` until it has been checked, which happens each time the launcher
@@ -252,3 +265,58 @@ val LauncherState.clearable: List<NotificationItem>
         val pending = pendingClear
         return notifications.filter { it.clearable && it.ref !in pending }
     }
+
+/**
+ * Wallpaper work in progress in this process (DESIGN §4.3). Not saved: a
+ * process that dies mid-check simply checks again.
+ */
+data class WallpaperWork(
+    /** The number of the check running now, if one is; a result with another number is stale. */
+    val checking: Int? = null,
+    /** What started the running check. */
+    val trigger: CheckTrigger? = null,
+    /** How many checks have started in this process, so a stale result can be told apart. */
+    val checks: Int = 0,
+    /**
+     * Whether the user asked for "Refresh now" and it hasn't finished, so
+     * Wallpaper details says it is checking (FR-WP-09). One asked for during
+     * another check runs when that one ends.
+     */
+    val refreshing: Boolean = false,
+    /** The image being set as the home screen wallpaper, if any. */
+    val applying: ImageId? = null,
+    /** The image the system last refused, so it isn't tried again until something changes. */
+    val applyFailed: ImageId? = null,
+)
+
+/**
+ * The cached image that should be the home screen wallpaper but isn't yet,
+ * if any (FR-WP-01, FR-WP-08): the one in use, unless it is the one applied,
+ * one is being applied, or the system refused it. While the launcher is on
+ * screen, Presentation applies it once no gesture is in progress, with a
+ * crossfade; while hidden, the reducer applies it at once (FR-ANIM-10).
+ */
+val LauncherState.wallpaperDue: WallpaperEntry?
+    get() {
+        val entry = wallpaper ?: return null
+        val work = wallpaperWork
+        return entry.takeIf {
+            settings.dailyWallpaper &&
+                work.applying == null &&
+                entry.image != wallpaperStatus.applied?.image &&
+                entry.image != work.applyFailed &&
+                wallpapers.any { it.image == entry.image }
+        }
+    }
+
+/** The cache index as saved in `wallpapers.json` (SRS §8). */
+val LauncherState.wallpaperIndex: WallpaperIndex
+    get() = WallpaperIndex(entries = wallpapers, pinned = pinned, status = wallpaperStatus)
+
+/** The screens a wallpaper is set on: the lock screen too with "Also use on lock screen" (FR-WP-05). */
+val LauncherState.wallpaperScreens: WallpaperScreens
+    get() = if (settings.lockScreen) WallpaperScreens.HomeAndLock else WallpaperScreens.Home
+
+/** Whether wallpaper downloads are limited to unmetered networks (FR-WP-06). */
+val LauncherState.wifiOnly: Boolean
+    get() = settings.downloadOn == DownloadOn.WifiOnly

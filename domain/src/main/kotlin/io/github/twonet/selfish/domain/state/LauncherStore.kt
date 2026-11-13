@@ -3,6 +3,7 @@ package io.github.twonet.selfish.domain.state
 import io.github.twonet.selfish.domain.model.AppId
 import io.github.twonet.selfish.domain.persist.LayoutDoc
 import io.github.twonet.selfish.domain.persist.SettingsDoc
+import io.github.twonet.selfish.domain.persist.WallpaperIndexDoc
 import io.github.twonet.selfish.domain.persist.saveTo
 import io.github.twonet.selfish.domain.ports.AppIconImage
 import io.github.twonet.selfish.domain.ports.DefaultApps
@@ -10,9 +11,14 @@ import io.github.twonet.selfish.domain.ports.DocName
 import io.github.twonet.selfish.domain.ports.ImageId
 import io.github.twonet.selfish.domain.ports.NotificationSource
 import io.github.twonet.selfish.domain.ports.Ports
+import io.github.twonet.selfish.domain.wallpaper.CheckResult
+import io.github.twonet.selfish.domain.wallpaper.WallpaperUpdater
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +31,8 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import java.time.Clock
+import java.util.Locale
 
 /**
  * The one store (AR-02). Holds the single [LauncherState], applies actions with
@@ -33,8 +41,9 @@ import kotlinx.coroutines.launch
  * Ports report changes only by emitting on their flows, which the store turns
  * into actions; no adapter calls upward (AR-01).
  *
- * On [start] the store restores the saved layout and settings, then writes
- * each document again whenever it changes (FR-GEN-07, DESIGN §3.3).
+ * On [start] the store restores the saved layout, settings and wallpaper
+ * cache index, then writes each document again whenever it changes
+ * (FR-GEN-07, DESIGN §3.3).
  *
  * Call [dispatch] from [scope]'s thread. In the app that is the main thread
  * (DESIGN §3.3); reducers are small and pure.
@@ -42,13 +51,24 @@ import kotlinx.coroutines.launch
  * Besides [state] and [dispatch], the store answers two queries, [icon]
  * and [wallpaperImage]: they are pixels to draw, not launcher state
  * (DESIGN §3.3).
+ *
+ * [clock] tells the wallpaper checks the time and the day, and [locale] the
+ * device's language and region for the Automatic market (FR-WP-02,
+ * FR-WP-03); tests pass virtual ones.
  */
 class LauncherStore(
     private val scope: CoroutineScope,
     private val ports: Ports,
     initial: LauncherState = LauncherState(),
+    clock: Clock = Clock.systemDefaultZone(),
+    locale: () -> Locale = { Locale.getDefault() },
 ) {
     private val mutableState = MutableStateFlow(initial)
+
+    private val wallpapers = WallpaperUpdater(ports, clock, locale)
+
+    /** The running wallpaper check, so turning Daily off can stop it before deleting the cache. */
+    private var checkJob: Job? = null
 
     val state: StateFlow<LauncherState> = mutableState.asStateFlow()
 
@@ -143,9 +163,14 @@ class LauncherStore(
     private suspend fun restore() {
         val layoutText = read(DocName.Layout)
         val settingsText = read(DocName.Settings)
+        val indexText = read(DocName.WallpaperIndex)
         val layout = LayoutDoc.decodeOrNull(layoutText.getOrNull())
         val settings = SettingsDoc.decode(settingsText.getOrNull())
-        dispatch(Action.Restored(layout, settings))
+        val savedIndex = WallpaperIndexDoc.decode(indexText.getOrNull())
+        // Matching the index with the files deletes the ones it doesn't
+        // name, so it waits for an index that was actually read.
+        val index = if (indexText.isSuccess) wallpapers.reconcile(savedIndex) else savedIndex
+        dispatch(Action.Restored(layout, settings, index))
 
         // A document that couldn't be read is never written in this process,
         // so a passing storage error can't replace the user's file with
@@ -161,6 +186,47 @@ class LauncherStore(
                 state.map { it.settings }.saveTo(ports.localStorage, DocName.Settings, SettingsDoc, alreadySaved = settings)
             }
         }
+        // Nothing is written while Daily Bing wallpaper is off, so the index
+        // isn't written back after the cache is deleted (FR-WP-13).
+        if (indexText.isSuccess) {
+            scope.launch {
+                state.map { if (it.settings.dailyWallpaper) it.wallpaperIndex else null }
+                    .saveTo(ports.localStorage, DocName.WallpaperIndex, WallpaperIndexDoc, alreadySaved = savedIndex)
+            }
+        }
+    }
+
+    /**
+     * Runs a wallpaper check and reports how it ended (DESIGN §4.3). A check
+     * stopped by turning Daily off still reports, so its job run ends.
+     */
+    private suspend fun checkWallpaper(effect: Effect.CheckWallpaper) {
+        checkJob = currentCoroutineContext()[Job]
+        fun report(result: CheckResult) =
+            dispatch(Action.WallpaperChecked(effect.number, result, wallpapers.now(), wallpapers.today(), effect.run))
+        val result = try {
+            wallpapers.check(effect.trigger, effect.market, effect.wifiOnly, effect.cached, effect.status)
+        } catch (e: CancellationException) {
+            report(CheckResult.Skipped)
+            throw e
+        } catch (_: Exception) {
+            CheckResult.Checked(emptyList(), succeeded = false)
+        }
+        report(result)
+    }
+
+    /** Applies a wallpaper; the home screen's outcome is reported back (FR-WP-01, FR-WP-11). */
+    private suspend fun applyWallpaper(effect: Effect.ApplyWallpaper) {
+        val image = effect.entry.image
+        val id = try {
+            wallpapers.apply(effect.entry, effect.screens)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            if (effect.screens.home) dispatch(Action.WallpaperApplyFailed(image))
+            return
+        }
+        if (effect.screens.home) dispatch(Action.WallpaperApplied(image, id))
     }
 
     /** The device's default apps, or none if they can't be looked up: a first run must still get its layout. */
@@ -199,6 +265,16 @@ class LauncherStore(
                     delay(effect.delay)
                     dispatch(effect.action)
                 }
+                is Effect.CheckWallpaper -> checkWallpaper(effect)
+                is Effect.ApplyWallpaper -> applyWallpaper(effect)
+                is Effect.DeleteWallpaperImages -> wallpapers.delete(effect.images)
+                Effect.ClearWallpaperCache -> {
+                    checkJob?.cancelAndJoin()
+                    wallpapers.clear()
+                }
+                is Effect.ScheduleWallpaperJob -> ports.wallpaperScheduler.schedulePeriodic(effect.wifiOnly)
+                is Effect.ScheduleWallpaperRetry -> ports.wallpaperScheduler.scheduleRetry(effect.delay, effect.wifiOnly)
+                Effect.CancelWallpaperJob -> ports.wallpaperScheduler.cancel()
             }
         } catch (e: CancellationException) {
             throw e

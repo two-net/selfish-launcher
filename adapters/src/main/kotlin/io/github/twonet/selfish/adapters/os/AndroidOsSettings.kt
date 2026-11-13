@@ -6,7 +6,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.database.ContentObserver
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import android.text.format.DateFormat
 import io.github.twonet.selfish.adapters.ForegroundActivity
@@ -27,8 +30,9 @@ import java.time.ZoneId
 /**
  * [OsSettings] over `Configuration.uiMode`, `Settings.Global`,
  * `ConnectivityManager`, `PowerManager`, the time broadcasts and `RoleManager`
- * (DESIGN §5.1). The Home role (#5), the clock (#6) and the animator scale
- * (#13) are real; the rest reports neutral defaults until #14 and #17.
+ * (DESIGN §5.1). The Home role (#5), the clock (#6), the animator scale
+ * (#13) and the network and power state (#14) are real; the dark theme
+ * reports none until #17.
  */
 class AndroidOsSettings(
     context: Context,
@@ -36,6 +40,8 @@ class AndroidOsSettings(
 ) : OsSettings {
     private val appContext = context.applicationContext
     private val roleManager = appContext.getSystemService(RoleManager::class.java)
+    private val connectivity = appContext.getSystemService(ConnectivityManager::class.java)
+    private val power = appContext.getSystemService(PowerManager::class.java)
 
     override val systemDark: Flow<Boolean?> = flowOf(null)
 
@@ -95,10 +101,26 @@ class AndroidOsSettings(
 
     private fun now() = ClockInfo(Instant.now(), ZoneId.systemDefault(), DateFormat.is24HourFormat(appContext))
 
-    override suspend fun networkState(): NetworkState =
-        NetworkState(connected = false, metered = true, dataSaver = false)
+    /**
+     * The default network now (FR-WP-06): connected when it reaches the
+     * internet and the system has validated it, so a captive portal doesn't
+     * count; metered as the system judges it, which counts a temporarily
+     * unmetered 5G network as unmetered. Data Saver is on unless the user
+     * exempted the launcher.
+     */
+    override suspend fun networkState(): NetworkState = withContext(Dispatchers.IO) {
+        val capabilities = connectivity.activeNetwork?.let(connectivity::getNetworkCapabilities)
+        NetworkState(
+            connected = capabilities != null &&
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+            metered = connectivity.isActiveNetworkMetered,
+            dataSaver = connectivity.restrictBackgroundStatus == ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED,
+        )
+    }
 
-    override suspend fun batterySaver(): Boolean = false
+    /** Whether Battery Saver is on (FR-WP-06). */
+    override suspend fun batterySaver(): Boolean = power.isPowerSaveMode
 
     /** True also when the device has no Home role, because then there is nothing to offer. */
     override suspend fun isDefaultHome(): Boolean = withContext(Dispatchers.IO) {

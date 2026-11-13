@@ -158,6 +158,12 @@ data class LauncherMotion(val reduced: Boolean = false) {
     /** The highlight color moving to the new wallpaper's (FR-ANIM-10). */
     fun <T> highlight(): FiniteAnimationSpec<T> = fade(Motion.AMBIENT_MILLIS, Motion.EnterEasing)
 
+    /**
+     * The outgoing wallpaper fading away to reveal the new one, in step with
+     * the highlight color (FR-ANIM-10, DESIGN §6.6).
+     */
+    fun <T> wallpaper(): FiniteAnimationSpec<T> = fade(Motion.AMBIENT_MILLIS, Motion.EnterEasing)
+
     /** A gesture hint's touch point tracing its gesture (FR-ANIM-13). When [reduced], it doesn't move. */
     fun <T> hintTrace(): FiniteAnimationSpec<T> = move(Motion.LONG_MILLIS)
 

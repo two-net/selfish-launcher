@@ -13,12 +13,13 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 /**
  * [AndroidOsSettings] against the device's real settings (level A, DESIGN
- * §8.3). The animator scale is changed through the shell, as the "Remove
- * animations" switch does, and put back afterwards.
+ * §8.3). The animator scale, Battery Saver and Data Saver are changed
+ * through the shell, as their switches do, and put back afterwards.
  */
 @RunWith(AndroidJUnit4::class)
 class AndroidOsSettingsTest {
@@ -58,6 +59,37 @@ class AndroidOsSettingsTest {
                 if (off) shell("settings put global $ANIMATOR_SCALE 0.5")
                 !off
             }
+        }
+    }
+
+    @Test
+    @Verifies("FR-WP-06")
+    fun batterySaverIsReported() = runBlocking {
+        val saved = shell("settings get global low_power").trim()
+        // Battery Saver turns itself off while the device charges.
+        shell("cmd battery unplug")
+        try {
+            shell("cmd power set-mode 1")
+            assertTrue(settings.batterySaver())
+            shell("cmd power set-mode 0")
+            assertFalse(settings.batterySaver())
+        } finally {
+            shell("cmd power set-mode ${if (saved == "1") 1 else 0}")
+            shell("cmd battery reset")
+        }
+    }
+
+    @Test
+    @Verifies("FR-WP-06")
+    fun dataSaverIsReported() = runBlocking {
+        val saved = shell("cmd netpolicy get restrict-background")
+        try {
+            shell("cmd netpolicy set restrict-background true")
+            assertTrue(settings.networkState().dataSaver)
+            shell("cmd netpolicy set restrict-background false")
+            assertFalse(settings.networkState().dataSaver)
+        } finally {
+            shell("cmd netpolicy set restrict-background ${saved.contains("enabled")}")
         }
     }
 

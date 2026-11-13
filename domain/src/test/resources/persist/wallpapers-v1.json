@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "image": "5d8c1f0e9b7a4c21",
+      "title": "A lighthouse at dusk",
+      "copyright": "Lighthouse, Maine (© A Photographer)",
+      "link": "https://www.bing.com/search?q=lighthouse",
+      "date": "2026-11-13",
+      "market": "de-DE",
+      "size": {
+        "width": 1080,
+        "height": 1920
+      },
+      "bytes": 412345
+    },
+    {
+      "image": "20261112_de-DE",
+      "title": "A glacier at noon",
+      "copyright": "Glacier, Iceland (© Another Photographer)",
+      "link": null,
+      "date": "2026-11-12",
+      "market": "de-DE",
+      "size": {
+        "width": 1920,
+        "height": 1080
+      },
+      "bytes": 398765
+    }
+  ],
+  "pinned": "20261112_de-DE",
+  "lastCheck": "2026-11-13T09:15:00Z",
+  "lastSuccess": "2026-11-13T06:15:00Z",
+  "day": "2026-11-13",
+  "checksToday": 3,
+  "retriesToday": 1,
+  "failures": 1,
+  "applied": {
+    "image": "20261112_de-DE",
+    "id": 42
+  }
+}
