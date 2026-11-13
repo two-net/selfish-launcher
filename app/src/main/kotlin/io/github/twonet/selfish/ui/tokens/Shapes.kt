@@ -18,6 +18,9 @@ object Radii {
 object Shapes {
     val Glass: Shape = RoundedCornerShape(Radii.Glass)
 
+    /** A glass sheet that hangs from the top edge, such as the Top Menu: rounded only at the bottom. */
+    val TopSheet: Shape = RoundedCornerShape(bottomStart = Radii.Glass, bottomEnd = Radii.Glass)
+
     /** The one rounded shape for app icons (UI-05). */
     val Icon: Shape = RoundedCornerShape(Radii.Icon)
 }

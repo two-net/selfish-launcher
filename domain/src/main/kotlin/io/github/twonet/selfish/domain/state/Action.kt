@@ -2,6 +2,7 @@ package io.github.twonet.selfish.domain.state
 
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.AppId
+import io.github.twonet.selfish.domain.model.AppearanceMode
 import io.github.twonet.selfish.domain.model.Bounds
 import io.github.twonet.selfish.domain.model.FolderId
 import io.github.twonet.selfish.domain.model.GridItem
@@ -9,6 +10,7 @@ import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.model.Settings
 import io.github.twonet.selfish.domain.ports.ClockInfo
 import io.github.twonet.selfish.domain.ports.DefaultApps
+import io.github.twonet.selfish.domain.ports.ImageId
 import io.github.twonet.selfish.domain.ports.NotificationItem
 import io.github.twonet.selfish.domain.ports.ScheduledRun
 
@@ -154,4 +156,20 @@ sealed interface Action {
 
     /** "Clear notifications", which runs once its remorse timer runs out (FR-EVT-06, FR-GEST-06). */
     data object ClearNotifications : Action
+
+    /** The appearance switch chose [mode] (FR-TOP-02, FR-THM-09). It is saved with the settings. */
+    data class SetAppearance(val mode: AppearanceMode) : Action
+
+    /**
+     * An ambience was chosen: the cached [image] becomes the wallpaper and
+     * stays until "Daily" is chosen again (FR-TOP-03, FR-WP-08). Ignored for
+     * an image that isn't cached, or with Daily Bing wallpaper off.
+     */
+    data class PinWallpaper(val image: ImageId) : Action
+
+    /** "Daily" was chosen: the newest image is used again, and daily changes resume (FR-TOP-03, FR-WP-08). */
+    data object ResumeDaily : Action
+
+    /** The shortcut to the system Settings app (FR-TOP-04). */
+    data object OpenSystemSettings : Action
 }

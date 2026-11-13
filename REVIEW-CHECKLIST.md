@@ -55,6 +55,13 @@ issues add their items here. Every release PR signs off the whole list.
 - [ ] [FR-EVT-07, FR-ONB-04] On a fresh install, "Turn on" on the notifications card opens the launcher's own notification-access screen; granting it and pressing Back lists the notifications. Revoking access in system settings turns the feature off and the card returns. "Hide" hides the card for good, also after a restart.
 - [ ] [NFR-PRIV-05] Nothing in `adapters/notifications`, `ui/events` or the store logs, writes or sends what notifications say; `NotificationItem` and `Posted` print no contents.
 
+## Top Menu (SRS §4.7)
+
+- [ ] [FR-TOP-01, FR-ANIM-01, FR-GEST-04] On a device, swiping down from the middle of Home pulls the Top Menu down with the finger over a dimming wallpaper, and a short slow pull springs back; a pull that starts on the status bar opens the system's notification shade instead. Checked with gesture and 3-button navigation, and with a display cutout.
+- [ ] [FR-TOP-04] "System settings" opens the Settings app over the launcher, and Back returns to the open Top Menu. ("Launcher settings" arrives with #18, "Wallpaper details" with #14.)
+- [ ] [FR-TOP-06, FR-GEST-07, FR-GEST-08] Long-pressing beside the covers or on the clock opens the Top Menu with a tick, and with no tick when the system's touch feedback is off; long-pressing a cover still lifts it and opens its menu, and Home's menu never opens with it.
+- [ ] [FR-TOP-02, FR-TOP-03, NFR-A11Y-01] With TalkBack, the parts of the menu are read as headings, the appearance options as radio buttons with the current one selected, and each ambience by its image's title (once #14 caches images). "Show top menu" on Home and "Show Home" on the menu open and close it.
+
 ## User interface (SRS §5.1)
 
 - [ ] [UI-01] Every surface floats over the wallpaper on the `glass`, `scrim` or `dim` tokens; no surface has an opaque full-screen background. Checked in both appearances over a bright and a dark wallpaper.

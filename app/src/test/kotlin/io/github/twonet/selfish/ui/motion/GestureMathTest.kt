@@ -159,19 +159,21 @@ class GestureMathTest {
     // Who takes a swipe (DESIGN §6.3)
 
     @Test
-    @Verifies("FR-GRID-01", "FR-GRID-04", "FR-EVT-01", "FR-EVT-05")
+    @Verifies("FR-GRID-01", "FR-GRID-04", "FR-EVT-01", "FR-EVT-05", "FR-TOP-01", "FR-TOP-05")
     fun `each resting layer takes only its own swipes`() {
-        fun route(from: Layer, axis: Axis, dx: Float = 0f, dy: Float = 0f, homeScrolls: Boolean = false, gridScrolls: Boolean = false, claimed: Boolean = false) =
-            GestureMath.route(from, axis, dx, dy, homeScrolls, gridScrolls, claimed)
+        fun route(from: Layer, axis: Axis, dx: Float = 0f, dy: Float = 0f, scrolls: Scrolls = Scrolls(), claimed: Boolean = false) =
+            GestureMath.route(from, axis, dx, dy, scrolls, claimed)
 
         assertEquals(Track.AppGrid, route(Layer.Home, Axis.Vertical, dy = -20f))
-        assertNull(route(Layer.Home, Axis.Vertical, dy = -20f, homeScrolls = true), "The covers scroll first")
-        assertNull(route(Layer.Home, Axis.Vertical, dy = 20f), "Down is the Top Menu's (#11)")
+        assertNull(route(Layer.Home, Axis.Vertical, dy = -20f, scrolls = Scrolls(homeForward = true)), "The covers scroll first")
+        assertEquals(Track.TopMenu, route(Layer.Home, Axis.Vertical, dy = 20f))
+        assertEquals(Track.TopMenu, route(Layer.Home, Axis.Vertical, dy = 20f, scrolls = Scrolls(homeForward = true)), "Covers that could scroll on don't stop a pull down")
+        assertNull(route(Layer.Home, Axis.Vertical, dy = 20f, scrolls = Scrolls(homeBackward = true)), "Scrolled covers scroll back first")
         assertEquals(Track.Events, route(Layer.Home, Axis.Horizontal, dx = -20f))
         assertEquals(Track.Events, route(Layer.Home, Axis.Horizontal, dx = 20f))
 
         assertEquals(Track.AppGrid, route(Layer.AppGrid, Axis.Vertical, dy = 20f))
-        assertNull(route(Layer.AppGrid, Axis.Vertical, dy = 20f, gridScrolls = true))
+        assertNull(route(Layer.AppGrid, Axis.Vertical, dy = 20f, scrolls = Scrolls(gridBackward = true)))
         assertNull(route(Layer.AppGrid, Axis.Vertical, dy = -20f))
         assertNull(route(Layer.AppGrid, Axis.Horizontal, dx = 20f))
 
@@ -180,5 +182,30 @@ class GestureMathTest {
         assertNull(route(Layer.Events, Axis.Horizontal, dx = 20f, claimed = true), "A dismissible notification's")
         assertNull(route(Layer.Events, Axis.Vertical, dy = 20f), "The pulley menu's")
         assertNull(route(Layer.Events, Axis.Vertical, dy = -20f), "The list's")
+
+        assertEquals(Track.TopMenu, route(Layer.TopMenu, Axis.Vertical, dy = -20f))
+        assertNull(route(Layer.TopMenu, Axis.Vertical, dy = -20f, scrolls = Scrolls(topMenuForward = true)), "Its content scrolls first")
+        assertNull(route(Layer.TopMenu, Axis.Vertical, dy = 20f), "Already open")
+        assertNull(route(Layer.TopMenu, Axis.Horizontal, dx = 20f), "The Ambiences row's")
+        assertNull(route(Layer.TopMenu, Axis.Horizontal, dx = -20f), "The Ambiences row's")
+    }
+
+    @Test
+    @Verifies("FR-GEST-01", "FR-TOP-01")
+    fun `each track follows the finger in its own direction`() {
+        assertEquals(30f, GestureMath.along(Track.AppGrid, dx = 5f, dy = -30f), "Up opens the App Grid")
+        assertEquals(30f, GestureMath.along(Track.Events, dx = -30f, dy = 5f), "Left counts up the carousel")
+        assertEquals(30f, GestureMath.along(Track.TopMenu, dx = 5f, dy = 30f), "Down pulls the Top Menu")
+        assertEquals(-30f, GestureMath.along(Track.TopMenu, dx = 0f, dy = -30f), "Up puts it back")
+        for (track in Track.entries) assertEquals(track.grows.axis, track.axis)
+    }
+
+    @Test
+    @Verifies("FR-TOP-01", "FR-TOP-05", "FR-GEST-02")
+    fun `the Top Menu settles like the App Grid, measured in its own height`() {
+        assertEquals(1f, GestureMath.settleTarget(0f, 0.4f, 0f, minFling, 0f..1f), "40% opens")
+        assertEquals(0f, GestureMath.settleTarget(0f, 0.2f, 0f, minFling, 0f..1f), "20% peeks back")
+        assertEquals(0f, GestureMath.settleTarget(1f, 0.6f, 0f, minFling, 0f..1f), "40% back up closes")
+        assertEquals(1f, GestureMath.settleTarget(1f, 0.8f, 0f, minFling, 0f..1f), "20% back up stays")
     }
 }

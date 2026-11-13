@@ -11,14 +11,22 @@ import kotlin.math.sign
 /** The axis a drag is locked to once it has clearly moved (FR-GEST-04). */
 enum class Axis { Horizontal, Vertical }
 
+/** A direction on the screen. */
+enum class Direction(val axis: Axis) {
+    Up(Axis.Vertical),
+    Down(Axis.Vertical),
+    Left(Axis.Horizontal),
+    Right(Axis.Horizontal),
+}
+
 /**
  * One way out of Home, with its own progress (DESIGN §6.2, §6.3). Its
- * values grow as the finger moves toward [positive], so the content always
- * follows the finger. The Top Menu (#11) joins as a third.
+ * values grow as the finger moves toward [grows], so the content always
+ * follows the finger.
  */
-enum class Track(val axis: Axis) {
+enum class Track(val grows: Direction) {
     /** Up from Home: 0 is Home, 1 the App Grid fully open (FR-GRID-01). */
-    AppGrid(Axis.Vertical),
+    AppGrid(Direction.Up),
 
     /**
      * Sideways between Home and Events (FR-EVT-01), a carousel of two
@@ -27,8 +35,33 @@ enum class Track(val axis: Axis) {
      * so Events comes in from whichever side the finger pushes toward, and
      * leaves the same way.
      */
-    Events(Axis.Horizontal),
+    Events(Direction.Left),
+
+    /**
+     * Down from Home: 0 is Home, 1 the Top Menu fully pulled down
+     * (FR-TOP-01). Measured in the menu's own height, not the screen's.
+     */
+    TopMenu(Direction.Down),
+    ;
+
+    val axis: Axis
+        get() = grows.axis
 }
+
+/**
+ * What can still scroll where a swipe starts, so the content keeps a swipe
+ * it would scroll instead of a transition taking it (DESIGN §6.3).
+ */
+data class Scrolls(
+    /** Home's covers can scroll further, so a swipe up scrolls them first. */
+    val homeForward: Boolean = false,
+    /** Home's covers are scrolled, so a swipe down scrolls them back first. */
+    val homeBackward: Boolean = false,
+    /** The App Grid isn't at its top, so a swipe down scrolls it (FR-GRID-04). */
+    val gridBackward: Boolean = false,
+    /** The Top Menu's content can scroll further, as at large font sizes, so a swipe up scrolls it first. */
+    val topMenuForward: Boolean = false,
+)
 
 /**
  * The pure decisions behind every view transition (DESIGN §6.3), kept apart
@@ -143,23 +176,38 @@ object GestureMath {
     }
 
     /**
+     * How far a finger that moved ([dx], [dy]) pixels moves [track], in
+     * pixels: positive toward [Track.grows], negative back.
+     */
+    fun along(track: Track, dx: Float, dy: Float): Float = when (track.grows) {
+        Direction.Up -> -dy
+        Direction.Down -> dy
+        Direction.Left -> -dx
+        Direction.Right -> dx
+    }
+
+    /**
      * Which transition a swipe from the resting [from] layer moves, once it
      * has locked to [axis] after moving ([dx], [dy]), or `null` if it isn't
      * one, so the elements under the finger keep it (DESIGN §6.3):
-     * - on Home, up opens the App Grid unless Home's covers can still
-     *   scroll ([homeScrolls]); sideways, either way, opens Events;
-     * - on the App Grid, down closes it while it is at its top
-     *   ([gridScrolls] false);
+     * - on Home, up opens the App Grid and down the Top Menu, unless Home's
+     *   covers can still scroll that way ([scrolls]); sideways, either way,
+     *   opens Events;
+     * - on the App Grid, down closes it while it is at its top;
      * - on Events, sideways returns to Home, unless the swipe started on
      *   something that takes sideways swipes itself ([claimed]), such as a
-     *   dismissible notification (FR-EVT-05).
+     *   dismissible notification (FR-EVT-05);
+     * - on the Top Menu, up closes it once its content can't scroll any
+     *   further (FR-TOP-05); sideways is left to the Ambiences row.
      */
-    fun route(from: Layer, axis: Axis, dx: Float, dy: Float, homeScrolls: Boolean, gridScrolls: Boolean, claimed: Boolean): Track? =
+    fun route(from: Layer, axis: Axis, dx: Float, dy: Float, scrolls: Scrolls, claimed: Boolean): Track? =
         when {
-            from == Layer.Home && axis == Axis.Vertical -> Track.AppGrid.takeIf { dy < 0f && !homeScrolls }
+            from == Layer.Home && axis == Axis.Vertical && dy < 0f -> Track.AppGrid.takeIf { !scrolls.homeForward }
+            from == Layer.Home && axis == Axis.Vertical && dy > 0f -> Track.TopMenu.takeIf { !scrolls.homeBackward }
             from == Layer.Home && axis == Axis.Horizontal -> Track.Events.takeIf { dx != 0f }
-            from == Layer.AppGrid && axis == Axis.Vertical -> Track.AppGrid.takeIf { dy > 0f && !gridScrolls }
+            from == Layer.AppGrid && axis == Axis.Vertical -> Track.AppGrid.takeIf { dy > 0f && !scrolls.gridBackward }
             from == Layer.Events && axis == Axis.Horizontal -> Track.Events.takeIf { !claimed }
+            from == Layer.TopMenu && axis == Axis.Vertical -> Track.TopMenu.takeIf { dy < 0f && !scrolls.topMenuForward }
             else -> null
         }
 }

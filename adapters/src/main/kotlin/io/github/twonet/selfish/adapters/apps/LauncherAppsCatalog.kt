@@ -26,6 +26,7 @@ import android.os.Process
 import android.os.UserHandle
 import android.os.UserManager
 import android.provider.MediaStore
+import android.provider.Settings
 import io.github.twonet.selfish.adapters.ForegroundActivity
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.AppId
@@ -323,10 +324,10 @@ class LauncherAppsCatalog internal constructor(
 
     /**
      * Opens [screen] over the launcher, so Back returns to it. A link opens
-     * in the default browser, and only if it is `https` (FR-EVT-03). The
-     * system Settings app and the usage access screen arrive with #11 and
-     * #19; notification access is the notification source's own
-     * (DESIGN §5.5).
+     * in the default browser, and only if it is `https` (FR-EVT-03); the
+     * Top Menu's shortcut opens the system Settings app (FR-TOP-04). The
+     * usage access screen arrives with #19; notification access is the
+     * notification source's own (DESIGN §5.5).
      */
     override suspend fun open(screen: SystemScreen) {
         val intent = when (screen) {
@@ -335,7 +336,8 @@ class LauncherAppsCatalog internal constructor(
                 if (uri.scheme != "https") return
                 Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
             }
-            SystemScreen.SystemSettings, SystemScreen.NotificationAccess, SystemScreen.UsageAccess -> return
+            SystemScreen.SystemSettings -> Intent(Settings.ACTION_SETTINGS)
+            SystemScreen.NotificationAccess, SystemScreen.UsageAccess -> return
         }
         withContext(Dispatchers.Main) {
             val activity = foreground.current
@@ -346,7 +348,7 @@ class LauncherAppsCatalog internal constructor(
                     appContext.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             } catch (_: ActivityNotFoundException) {
-                // No browser: nothing to open it in.
+                // No browser, or no Settings app: nothing to open it in.
             }
         }
     }

@@ -134,6 +134,39 @@ class SystemIntegrationTest {
     }
 
     @Test
+    @Verifies("FR-GEN-03", "FR-GEN-04", "FR-TOP-01", "FR-TOP-05")
+    fun backAndHomeCloseTheTopMenu() {
+        showLauncherAsHome()
+        val menu = By.text(launcherString("top_menu_system_settings"))
+
+        openTopMenu(menu)
+        device.pressBack()
+        assertTrue(device.wait(Until.gone(menu), TIMEOUT_MS), "Back didn't close the Top Menu")
+        assertLauncherInFront()
+
+        openTopMenu(menu)
+        device.pressHome()
+        assertTrue(device.wait(Until.gone(menu), TIMEOUT_MS), "Home didn't close the Top Menu")
+    }
+
+    @Test
+    @Verifies("FR-TOP-04")
+    fun theSystemSettingsShortcutOpensTheSettingsAppAndBackReturnsToTheMenu() {
+        val settings = settingsPackage()
+        assumeTrue("The device has no Settings app", settings != null)
+        showLauncherAsHome()
+        val shortcut = By.text(launcherString("top_menu_system_settings"))
+
+        openTopMenu(shortcut)
+        device.findObject(shortcut).click()
+        assertTrue(device.wait(Until.hasObject(By.pkg(settings!!).depth(0)), TIMEOUT_MS), "Settings didn't open")
+
+        device.pressBack()
+        assertLauncherInFront()
+        assertTrue(device.wait(Until.hasObject(shortcut), TIMEOUT_MS), "Back didn't return to the Top Menu")
+    }
+
+    @Test
     @Verifies("FR-GEN-08")
     fun homeReopensTheLauncherAfterTheSystemEndsItsProcess() {
         showLauncherAsHome()
@@ -169,6 +202,21 @@ class SystemIntegrationTest {
         device.swipe(device.displayWidth * 3 / 4, y, device.displayWidth / 4, y, SWIPE_STEPS)
         assertTrue(device.wait(Until.hasObject(events), TIMEOUT_MS), "Events didn't open")
     }
+
+    /** Swipes down from the upper middle of Home, well below the status bar, until [menu] shows (FR-TOP-01). */
+    private fun openTopMenu(menu: BySelector) {
+        val x = device.displayWidth / 2
+        device.swipe(x, device.displayHeight / 3, x, device.displayHeight * 4 / 5, SWIPE_STEPS)
+        assertTrue(device.wait(Until.hasObject(menu), TIMEOUT_MS), "The Top Menu didn't open")
+    }
+
+    /** The package of the system's Settings app, or `null` if nothing handles its intent. */
+    private fun settingsPackage(): String? =
+        shell("cmd package resolve-activity --brief -a android.settings.SETTINGS")
+            .lines()
+            .map { it.trim() }
+            .lastOrNull { '/' in it }
+            ?.substringBefore('/')
 
     /** One of the launcher's strings, in the device's language. */
     @Suppress("DiscouragedApi") // The launcher's R class isn't visible from this test module.

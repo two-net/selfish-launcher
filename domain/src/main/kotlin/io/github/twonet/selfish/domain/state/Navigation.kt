@@ -16,6 +16,11 @@ sealed interface Layer {
 
     data object Events : Layer
 
+    /**
+     * The menu pulled down over Home (SRS §4.7): appearance, ambiences and
+     * shortcuts. Reached like the App Grid and Events, by a released swipe
+     * down or a long-press on empty Home (FR-TOP-01, FR-TOP-06).
+     */
     data object TopMenu : Layer
 
     /**

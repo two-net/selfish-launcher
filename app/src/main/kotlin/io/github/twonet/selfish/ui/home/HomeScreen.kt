@@ -1,5 +1,6 @@
 package io.github.twonet.selfish.ui.home
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,11 +19,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -30,8 +33,10 @@ import io.github.twonet.selfish.R
 import io.github.twonet.selfish.domain.layout.LayoutRules
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.Bounds
+import io.github.twonet.selfish.domain.model.Haptics
 import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.LauncherState
+import io.github.twonet.selfish.domain.state.Layer
 import io.github.twonet.selfish.domain.state.MenuTarget
 import io.github.twonet.selfish.domain.state.contextMenu
 import io.github.twonet.selfish.domain.state.covers
@@ -42,6 +47,7 @@ import io.github.twonet.selfish.ui.components.Glass
 import io.github.twonet.selfish.ui.components.LauncherText
 import io.github.twonet.selfish.ui.components.ReorderableGrid
 import io.github.twonet.selfish.ui.components.onBoundsInWindow
+import io.github.twonet.selfish.ui.components.onUnhandledLongPress
 import io.github.twonet.selfish.ui.components.pressable
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
 import io.github.twonet.selfish.ui.tokens.Spacing
@@ -49,9 +55,11 @@ import io.github.twonet.selfish.ui.tokens.Spacing
 /**
  * Home (SRS §4.2): the wallpaper edge to edge, the time and date, and up to
  * nine covers of favorite apps, rendered from [state]; every touch goes back
- * as an action (AR-02). Swiping up from here opens the App Grid, which
- * [io.github.twonet.selfish.ui.LauncherScreen] handles; it reads
- * [coversState] to let covers that don't fit scroll first.
+ * as an action (AR-02). Swiping up from here opens the App Grid and swiping
+ * down the Top Menu, which [io.github.twonet.selfish.ui.LauncherScreen]
+ * handles; it reads [coversState] to let covers that don't fit scroll
+ * first. Long-pressing anywhere but a cover opens the Top Menu too
+ * (FR-TOP-06), with the long-press tick (FR-GEST-07).
  *
  * Content is inset by the system bars, cutouts and rounded corners; only the
  * scrim runs edge to edge (UI-07).
@@ -64,7 +72,16 @@ fun HomeScreen(
     coversState: LazyGridState = rememberLazyGridState(),
 ) {
     val menu = state.contextMenu
-    Column(modifier.fillMaxSize().testTag(HomeTags.SCREEN)) {
+    val view = LocalView.current
+    val haptics by rememberUpdatedState(state.settings.haptics != Haptics.Off)
+    val currentDispatch by rememberUpdatedState(dispatch)
+    val openTopMenu = remember(view) {
+        {
+            if (haptics) view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            currentDispatch(Action.LayerSettled(Layer.TopMenu))
+        }
+    }
+    Column(modifier.fillMaxSize().onUnhandledLongPress(openTopMenu).testTag(HomeTags.SCREEN)) {
         // A scrim behind the status bar and the clock keeps both legible
         // over any wallpaper (FR-HOME-01). It is the worst case for now;
         // #16 weakens it over wallpapers that don't need it.

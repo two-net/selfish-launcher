@@ -313,6 +313,35 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
         val refs = state.clearable.mapTo(LinkedHashSet()) { it.ref }
         if (!state.notificationsOn || refs.isEmpty()) Next(state) else startRemorse(state, Destructive.ClearNotifications(refs))
     }
+
+    // Saved with the settings; #17 makes the theme follow it (FR-TOP-02).
+    is Action.SetAppearance ->
+        if (action.mode == state.settings.appearance) {
+            Next(state)
+        } else {
+            Next(state.copy(settings = state.settings.copy(appearance = action.mode)))
+        }
+
+    // The chosen image is the one in use until "Daily" is chosen again. #14
+    // adds the effects that apply it and save the pin (FR-TOP-03, FR-WP-08).
+    is Action.PinWallpaper -> {
+        val entry = state.wallpapers.firstOrNull { it.image == action.image }
+        if (entry == null || !state.settings.dailyWallpaper || (state.pinned == entry.image && state.wallpaper == entry)) {
+            Next(state)
+        } else {
+            Next(state.copy(pinned = entry.image, wallpaper = entry))
+        }
+    }
+
+    // Daily again: the newest cached image is the one in use (DESIGN §4.3).
+    Action.ResumeDaily ->
+        if (state.pinned == null) {
+            Next(state)
+        } else {
+            Next(state.copy(pinned = null, wallpaper = state.wallpapers.firstOrNull() ?: state.wallpaper))
+        }
+
+    Action.OpenSystemSettings -> Next(state, listOf(Effect.OpenScreen(SystemScreen.SystemSettings)))
 }
 
 /**

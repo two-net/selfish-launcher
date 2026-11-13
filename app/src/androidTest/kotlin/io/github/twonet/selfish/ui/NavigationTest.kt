@@ -34,8 +34,8 @@ import kotlin.test.assertTrue
 /**
  * Moving between Home and the App Grid (level I, DESIGN §8.3): the swipes,
  * their thresholds and the screen-reader way in, and catching a transition
- * in flight. Events' own swipes are in `EventsTest`; the Top Menu joins
- * with #11.
+ * in flight. Events' own swipes are in `EventsTest`, and the Top Menu's in
+ * `TopMenuTest`.
  */
 @RunWith(AndroidJUnit4::class)
 class NavigationTest {

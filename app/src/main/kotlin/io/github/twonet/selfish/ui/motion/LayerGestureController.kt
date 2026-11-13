@@ -25,25 +25,33 @@ import kotlin.math.abs
 
 /**
  * The one gesture-and-motion component (AR-04, DESIGN §6.3). It owns every
- * transition out of Home, one [Track] each: up to the App Grid and sideways
- * to Events. Each follows the finger 1:1 (FR-GEST-01), and on release
- * completes or peeks back (FR-GEST-02). One moves at a time.
+ * transition out of Home, one [Track] each: up to the App Grid, sideways to
+ * Events and down to the Top Menu. Each follows the finger 1:1
+ * (FR-GEST-01), and on release completes or peeks back (FR-GEST-02). One
+ * moves at a time.
  *
  * The progress is transient UI state (AR-02). Only where a release ends up
  * reaches the store, through [onSettled]; when the store changes the layer
- * itself, for example on a Home press, [follow] moves there. The Top Menu
- * axis joins with #11, as one more track.
+ * itself, for example on a Home press, [follow] moves there.
  */
 @Stable
 class LayerGestureController(private val scope: CoroutineScope) {
     private val grid = Animatable(0f)
     private val carousel = Animatable(0f)
+    private val topMenu = Animatable(0f)
 
     /** Called when a release settles on a different layer than the one it started from. */
     var onSettled: (Layer) -> Unit = {}
 
-    /** The size of the screen, in pixels: each track's whole transition is its height or width. */
+    /** The size of the screen, in pixels: the App Grid's whole transition is its height, the carousel's its width. */
     var size: IntSize = IntSize(1, 1)
+
+    /**
+     * The Top Menu's height, in pixels, which is its whole transition, so
+     * the 30% threshold is 30% of the menu (FR-GEST-02). Until it has been
+     * measured, the screen's height stands in.
+     */
+    var topMenuHeight: Int = 0
 
     /** The platform's minimum fling velocity, in pixels per second. */
     var minFlingVelocity: Float = 0f
@@ -78,6 +86,10 @@ class LayerGestureController(private val scope: CoroutineScope) {
     val eventsProgress: Float
         get() = (1f - abs(GestureMath.eventsShift(carousel.value))).coerceIn(0f, 1f)
 
+    /** The Top Menu's progress: 0 on Home, 1 when it is fully pulled down. Read it in a draw or layout phase. */
+    val topMenuProgress: Float
+        get() = topMenu.value
+
     /**
      * Where the last release, or the store, sent each track. A new drag
      * measures from here, so catching a transition mid-flight and releasing
@@ -85,6 +97,7 @@ class LayerGestureController(private val scope: CoroutineScope) {
      */
     private var gridGoal = 0f
     private var carouselGoal = 0f
+    private var topMenuGoal = 0f
 
     /** The track a finger is moving, if any, and where the finger has taken it. */
     private var dragging: Track? = null
@@ -99,6 +112,7 @@ class LayerGestureController(private val scope: CoroutineScope) {
         get() = when {
             grid.isRunning -> Track.AppGrid
             carousel.isRunning -> Track.Events
+            topMenu.isRunning -> Track.TopMenu
             else -> null
         }
 
@@ -111,7 +125,8 @@ class LayerGestureController(private val scope: CoroutineScope) {
             if (isDragging || settling != null) return null
             return when {
                 grid.value == 1f && gridGoal == 1f -> Layer.AppGrid
-                grid.value != 0f -> null
+                topMenu.value == 1f && topMenuGoal == 1f -> Layer.TopMenu
+                grid.value != 0f || topMenu.value != 0f -> null
                 GestureMath.homeShift(carousel.value) == 0f -> Layer.Home
                 GestureMath.eventsShift(carousel.value) == 0f -> Layer.Events
                 else -> null
@@ -125,10 +140,7 @@ class LayerGestureController(private val scope: CoroutineScope) {
         snap(track, dragValue)
     }
 
-    /**
-     * Moves the grabbed track by [distance] pixels toward larger values; for
-     * both tracks, that is the finger moving up or left.
-     */
+    /** Moves the grabbed track by [distance] pixels toward larger values, its [Track.grows] direction. */
     fun dragBy(distance: Float) {
         val track = dragging ?: return
         dragValue = (dragValue + distance / travel(track)).coerceIn(range(track))
@@ -158,14 +170,17 @@ class LayerGestureController(private val scope: CoroutineScope) {
      * Moves to the store's [layer], for example after a Home or Back press,
      * unless the transitions are already heading there. With [animate]
      * false it jumps, for a change made while the launcher wasn't in front.
-     * Layers no track leads to yet are left to their own issues.
+     * Layers no track leads to, such as Wallpaper details, are left to
+     * their own issues.
      */
     fun follow(layer: Layer, animate: Boolean) {
-        if (layer != Layer.Home && layer != Layer.AppGrid && layer != Layer.Events) return
+        if (layer !in FOLLOWED) return
         val gridTarget = if (layer == Layer.AppGrid) 1f else 0f
         val carouselTarget = GestureMath.carouselRest(layer, carousel.value, endSide)
+        val topMenuTarget = if (layer == Layer.TopMenu) 1f else 0f
         moveTo(Track.AppGrid, gridTarget, animate)
         moveTo(Track.Events, carouselTarget, animate)
+        moveTo(Track.TopMenu, topMenuTarget, animate)
     }
 
     private fun moveTo(track: Track, target: Float, animate: Boolean) {
@@ -199,45 +214,52 @@ class LayerGestureController(private val scope: CoroutineScope) {
     private fun animatable(track: Track): Animatable<Float, *> = when (track) {
         Track.AppGrid -> grid
         Track.Events -> carousel
+        Track.TopMenu -> topMenu
     }
 
     private fun goal(track: Track): Float = when (track) {
         Track.AppGrid -> gridGoal
         Track.Events -> carouselGoal
+        Track.TopMenu -> topMenuGoal
     }
 
     private fun setGoal(track: Track, value: Float) = when (track) {
         Track.AppGrid -> gridGoal = value
         Track.Events -> carouselGoal = value
+        Track.TopMenu -> topMenuGoal = value
     }
 
-    private fun travel(track: Track): Float = when (track.axis) {
-        Axis.Vertical -> size.height
-        Axis.Horizontal -> size.width
+    private fun travel(track: Track): Float = when (track) {
+        Track.AppGrid -> size.height
+        Track.Events -> size.width
+        Track.TopMenu -> if (topMenuHeight > 0) topMenuHeight else size.height
     }.toFloat().coerceAtLeast(1f)
 
-    /** How far a drag may take [track]: the App Grid between closed and open, the carousel one page either way. */
+    /**
+     * How far a drag may take [track]: the App Grid and the Top Menu between
+     * closed and open, the carousel one page either way.
+     */
     private fun range(track: Track): ClosedFloatingPointRange<Float> = when (track) {
-        Track.AppGrid -> 0f..1f
+        Track.AppGrid, Track.TopMenu -> 0f..1f
         Track.Events -> (carouselGoal - 1f)..(carouselGoal + 1f)
     }
 
     private fun layerAt(track: Track, value: Float): Layer = when (track) {
         Track.AppGrid -> if (value == 1f) Layer.AppGrid else Layer.Home
         Track.Events -> if (abs(value % 2f) == 1f) Layer.Events else Layer.Home
+        Track.TopMenu -> if (value == 1f) Layer.TopMenu else Layer.Home
+    }
+
+    private companion object {
+        /** The layers a track leads to. */
+        val FOLLOWED = setOf(Layer.Home, Layer.AppGrid, Layer.Events, Layer.TopMenu)
     }
 }
 
-/** The part of [offset] that moves this track toward larger values: up or left. */
-private fun Track.along(offset: Offset): Float = when (axis) {
-    Axis.Vertical -> -offset.y
-    Axis.Horizontal -> -offset.x
-}
+/** The part of [offset] that moves this track toward larger values. */
+private fun Track.along(offset: Offset): Float = GestureMath.along(this, offset.x, offset.y)
 
-private fun Track.along(velocity: Velocity): Float = when (axis) {
-    Axis.Vertical -> -velocity.y
-    Axis.Horizontal -> -velocity.x
-}
+private fun Track.along(velocity: Velocity): Float = GestureMath.along(this, velocity.x, velocity.y)
 
 /**
  * Turns swipes into transitions (DESIGN §6.3). Put it on the launcher's
@@ -246,11 +268,13 @@ private fun Track.along(velocity: Velocity): Float = when (axis) {
  *
  * It watches every touch before the elements under it do, and takes the
  * touch over once it is clearly a swipe a transition owns, as
- * [GestureMath.route] decides:
- * - up on Home, unless Home's covers can still scroll that way
- *   ([homeScrolls]), which opens the App Grid (FR-GRID-01);
- * - down on the App Grid while it is at its top, so [gridScrolls] is false,
- *   which closes it (FR-GRID-04);
+ * [GestureMath.route] decides, unless the content can still scroll that way
+ * ([scrolls]):
+ * - up on Home, which opens the App Grid (FR-GRID-01);
+ * - down on Home, which pulls down the Top Menu (FR-TOP-01);
+ * - down on the App Grid while it is at its top, which closes it
+ *   (FR-GRID-04);
+ * - up on the Top Menu, which closes it (FR-TOP-05);
  * - sideways on Home or Events, which moves between them (FR-EVT-01),
  *   unless it starts on something in the controller's [SidewaysClaims],
  *   such as a dismissible notification (FR-EVT-05).
@@ -258,7 +282,8 @@ private fun Track.along(velocity: Velocity): Float = when (axis) {
  * Until then the elements under the finger get the touch as usual: taps,
  * scrolling, pulley menus, and long-presses, which lift an item and keep
  * the touch for dragging it. Touches that start inside [ignored], the
- * system gesture areas, are left alone (FR-GEST-04). Touching a settling
+ * system gesture areas and the status bar, are left alone (FR-GEST-04,
+ * FR-TOP-01). Touching a settling
  * transition catches it, and the same touch drags it either way
  * (FR-GEST-03).
  *
@@ -269,8 +294,7 @@ private fun Track.along(velocity: Velocity): Float = when (axis) {
 fun Modifier.layerGestures(
     controller: LayerGestureController,
     ignored: WindowInsets,
-    homeScrolls: () -> Boolean,
-    gridScrolls: () -> Boolean,
+    scrolls: () -> Scrolls,
     paused: () -> Boolean = { false },
 ): Modifier = pointerInput(controller, ignored) {
     awaitEachGesture {
@@ -309,7 +333,7 @@ fun Modifier.layerGestures(
             if (change.isConsumed || change.uptimeMillis - down.uptimeMillis > viewConfiguration.longPressTimeoutMillis) break
             moved += change.positionChange()
             val axis = GestureMath.lockedAxis(moved.x, moved.y, viewConfiguration.touchSlop) ?: continue
-            val owned = GestureMath.route(checkNotNull(from), axis, moved.x, moved.y, homeScrolls(), gridScrolls(), claimed) ?: break
+            val owned = GestureMath.route(checkNotNull(from), axis, moved.x, moved.y, scrolls(), claimed) ?: break
             track = owned
             controller.grab(owned)
             controller.dragBy(owned.along(moved))

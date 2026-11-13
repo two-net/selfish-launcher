@@ -55,6 +55,24 @@
     <!-- Events' pulley menu item that clears the dismissible notifications after a remorse timer (FR-EVT-06). -->
     <string name="menu_clear_notifications">Clear notifications</string>
 
+    <!-- Top Menu (SRS §4.7) -->
+    <!-- The screen-reader action on Home that opens the Top Menu instead of swiping down (FR-GEST-09). -->
+    <string name="action_show_top_menu">Show top menu</string>
+    <!-- The label above the Top Menu's switch between Light, Dark and System (FR-TOP-02). -->
+    <string name="top_menu_appearance">Appearance</string>
+    <!-- Appearance that follows the device's dark-theme setting (FR-THM-01). -->
+    <string name="appearance_system">System</string>
+    <!-- Appearance with dark text on light glass (FR-THM-05). -->
+    <string name="appearance_light">Light</string>
+    <!-- Appearance with light text on dark glass (FR-THM-05). -->
+    <string name="appearance_dark">Dark</string>
+    <!-- The label above the row of recent wallpapers to switch between (FR-TOP-03). -->
+    <string name="top_menu_ambiences">Ambiences</string>
+    <!-- The first tile in the Ambiences row: a new wallpaper every day, instead of keeping one (FR-TOP-03). -->
+    <string name="ambience_daily">Daily</string>
+    <!-- The Top Menu's shortcut that opens the device's Settings app (FR-TOP-04). -->
+    <string name="top_menu_system_settings">System settings</string>
+
     <!-- Remorse timers (FR-GEST-06) -->
     <!-- The banner of a folder about to be removed. -->
     <string name="remorse_remove_folder">Removing folder</string>

@@ -46,6 +46,15 @@ object Sizes {
     /** The thumbnail of the wallpaper on the Events card (FR-EVT-03). */
     val WallpaperThumbnail: Dp = 64.dp
 
+    /** The width of each tile in the Top Menu's Ambiences row (FR-TOP-03). */
+    val AmbienceWidth: Dp = 64.dp
+
+    /** Ambience tiles are portrait, like the screen they preview: width divided by height. */
+    val AmbienceAspectRatio: Float = 3f / 4f
+
+    /** The outline of a chosen option, such as the active ambience, in the highlight color (FR-TOP-02, FR-TOP-03). */
+    val SelectedOutline: Dp = 4.dp
+
     /** How strongly the wallpaper is blurred behind the open App Grid, where supported (FR-GRID-01). */
     val BlurRadius: Dp = 32.dp
 }

@@ -79,9 +79,9 @@ class LauncherStoreTest {
     }
 
     /**
-     * Replaces the layout and settings at once. No settings action exists
-     * yet (#18), so tests dispatch another [Action.Restored]; savers can't
-     * tell the difference.
+     * Replaces the layout and settings at once. Only the appearance has an
+     * action of its own so far (#11; the rest arrive with #18), so tests
+     * dispatch another [Action.Restored]; savers can't tell the difference.
      */
     private fun LauncherStore.change(layout: Layout, settings: Settings) = dispatch(Action.Restored(layout, settings))
 
@@ -598,5 +598,28 @@ class LauncherStoreTest {
         assertEquals(listOf<SystemScreen>(SystemScreen.Link("https://www.bing.com/")), catalog.openedScreens)
         assertEquals(listOf<Byte>(1, 2, 3), store.wallpaperImage(ImageId("today"))?.toList())
         assertNull(store.wallpaperImage(ImageId("missing")))
+    }
+
+    @Test
+    @Verifies("FR-TOP-04")
+    fun `the System settings shortcut reaches the app catalog`() = runTest {
+        val store = startedStore()
+
+        store.dispatch(Action.OpenSystemSettings)
+        runCurrent()
+
+        assertEquals(listOf<SystemScreen>(SystemScreen.SystemSettings), catalog.openedScreens)
+    }
+
+    @Test
+    @Verifies("FR-TOP-02", "FR-GEN-07")
+    fun `the appearance chosen in the Top Menu is saved`() = runTest {
+        save(savedLayout, Settings())
+        val store = startedStore()
+
+        store.dispatch(Action.SetAppearance(AppearanceMode.Light))
+        runCurrent()
+
+        assertEquals(AppearanceMode.Light, SettingsDoc.decode(storage.docs[DocName.Settings]).appearance)
     }
 }

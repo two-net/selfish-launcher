@@ -100,6 +100,32 @@ fun Modifier.onUnhandledTap(onTap: () -> Unit): Modifier = pointerInput(onTap) {
     }
 }
 
+/**
+ * Calls [onLongPress] for a long-press that nothing under the pointer
+ * handled, such as one on an empty part of Home, which opens the Top Menu
+ * (FR-TOP-06). Like [onUnhandledTap], it only observes, after the elements
+ * under the pointer: a press one of them took, such as a cover's lift,
+ * doesn't count, and neither does a touch that moves past the touch slop or
+ * lifts before the system's long-press timeout (FR-GEST-07). Pass a stable
+ * [onLongPress], because a new one restarts the gesture.
+ */
+fun Modifier.onUnhandledLongPress(onLongPress: () -> Unit): Modifier = pointerInput(onLongPress) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        // A pressable element under the finger has taken it.
+        if (down.isConsumed) return@awaitEachGesture
+        val ended = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+            while (true) {
+                val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed || change.isConsumed) break
+                if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop) break
+            }
+        }
+        // Still down, still in place and still nobody's when the timeout passed.
+        if (ended == null) onLongPress()
+    }
+}
+
 /** Consumes taps that reach this element unhandled, so an [onUnhandledTap] around it ignores them. */
 private fun Modifier.keepTaps(): Modifier = pointerInput(Unit) {
     awaitEachGesture {

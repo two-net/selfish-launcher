@@ -10,6 +10,7 @@ import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.model.Settings
 import io.github.twonet.selfish.domain.model.WallpaperEntry
 import io.github.twonet.selfish.domain.ports.ClockInfo
+import io.github.twonet.selfish.domain.ports.ImageId
 import io.github.twonet.selfish.domain.ports.NotificationItem
 import io.github.twonet.selfish.domain.ports.NotificationRef
 import io.github.twonet.selfish.domain.remorse.Destructive
@@ -83,10 +84,22 @@ data class LauncherState(
     val remorses: Int = 0,
     /**
      * The image of the day in use as the wallpaper, for the Events card
-     * (FR-EVT-03, FR-WP-10). #14 fills it in; until then it is `null`, and
-     * Events shows no card.
+     * (FR-EVT-03, FR-WP-10): the [pinned] one, or else the newest. #14
+     * fills it in; until then it is `null`, and Events shows no card.
      */
     val wallpaper: WallpaperEntry? = null,
+    /**
+     * The cached images of the day, newest first, which the Top Menu offers
+     * as ambiences (FR-TOP-03, FR-WP-07). #14 fills it from the cache index;
+     * until then it is empty, and the Ambiences row is hidden.
+     */
+    val wallpapers: List<WallpaperEntry> = emptyList(),
+    /**
+     * The cached image chosen as an ambience, which stops daily changes
+     * until "Daily" is chosen again (FR-TOP-03, FR-WP-08), or `null` for
+     * Daily. #14 saves it in the cache index and applies it.
+     */
+    val pinned: ImageId? = null,
     /**
      * Whether the user has granted notification access (FR-EVT-07), or
      * `null` until it has been checked, which happens each time the launcher
@@ -199,6 +212,13 @@ val LauncherState.notificationsOn: Boolean
  */
 val LauncherState.showsAccessCard: Boolean
     get() = !notificationsOn && !settings.notificationsCardDismissed
+
+/**
+ * Whether the Top Menu shows its Ambiences row: Daily Bing wallpaper is on
+ * and there are cached images to choose from (FR-TOP-03, FR-WP-13).
+ */
+val LauncherState.showsAmbiences: Boolean
+    get() = settings.dailyWallpaper && wallpapers.isNotEmpty()
 
 /** The notifications whose clearing is waiting for its remorse timer, if any (FR-EVT-06). */
 val LauncherState.pendingClear: Set<NotificationRef>
