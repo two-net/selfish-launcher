@@ -33,10 +33,12 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.LocalPinnableContainer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.IntOffset
@@ -59,8 +61,10 @@ import kotlinx.coroutines.launch
  * (FR-GRID-06, FR-ANIM-08). Owned code, because the rules are the
  * launcher's own (DESIGN §6.4, §7.3).
  *
- * Each item gets a [LiftDrag] to pass to [pressable]. A long-press calls
- * [onLift], which opens the item's menu; the item stays lifted while
+ * Each item gets a [LiftDrag] to pass to [pressable]. A long-press plays
+ * the long-press tick (FR-GEST-07; through `LocalHapticFeedback`, so it
+ * follows the Haptic feedback setting, FR-GEST-08) and calls [onLift],
+ * which opens the item's menu; the item stays lifted while
  * [menuFor] is that item. Once the finger moves past the touch slop,
  * [onDragStart] is called, which closes the menu. The order shown while
  * dragging is transient UI state (AR-02): only the drop reaches the store,
@@ -124,6 +128,7 @@ fun <T> ReorderableGrid(
     val slop = LocalViewConfiguration.current.touchSlop
     val density = LocalDensity.current
     val direction = LocalLayoutDirection.current
+    val haptics = LocalHapticFeedback.current
     // Slots are measured from the end of the top and start padding.
     val padding = with(density) {
         Offset(contentPadding.calculateStartPadding(direction).toPx(), contentPadding.calculateTopPadding().toPx())
@@ -139,7 +144,12 @@ fun <T> ReorderableGrid(
         drag.handOffOutside = if (onHandOff != null) handOffOutside else null
         val byKey = { k: String -> items.firstOrNull { key(it) == k } }
         drag.onHandOff = { k, at -> byKey(k)?.let { onHandOff?.invoke(it, at) } }
-        drag.onLift = { k -> byKey(k)?.let(onLift) }
+        drag.onLift = { k ->
+            // A handed-off item is adopted, not lifted, so a drag out of a
+            // folder ticks only once.
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            byKey(k)?.let(onLift)
+        }
         drag.onDragStart = onDragStart
         drag.onMove = { k, to -> byKey(k)?.let { onMove(it, to) } }
         drag.canDropOnto = { a, b ->

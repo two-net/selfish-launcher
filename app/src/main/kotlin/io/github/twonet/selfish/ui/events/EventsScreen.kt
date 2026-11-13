@@ -40,7 +40,6 @@ import androidx.compose.ui.text.style.TextAlign
 import io.github.twonet.selfish.R
 import io.github.twonet.selfish.domain.events.NotificationGroup
 import io.github.twonet.selfish.domain.model.Bounds
-import io.github.twonet.selfish.domain.model.Haptics
 import io.github.twonet.selfish.domain.model.WallpaperEntry
 import io.github.twonet.selfish.domain.ports.ClockInfo
 import io.github.twonet.selfish.domain.ports.NotificationItem
@@ -130,7 +129,6 @@ internal fun EventsScreen(
     PulleyMenu(
         items = pulley,
         atTop = { !listState.canScrollBackward },
-        haptics = state.settings.haptics != Haptics.Off,
         modifier = modifier.fillMaxSize().testTag(EventsTags.SCREEN),
     ) {
         LazyColumn(

@@ -62,6 +62,13 @@ issues add their items here. Every release PR signs off the whole list.
 - [ ] [FR-TOP-06, FR-GEST-07, FR-GEST-08] Long-pressing beside the covers or on the clock opens the Top Menu with a tick, and with no tick when the system's touch feedback is off; long-pressing a cover still lifts it and opens its menu, and Home's menu never opens with it.
 - [ ] [FR-TOP-02, FR-TOP-03, NFR-A11Y-01] With TalkBack, the parts of the menu are read as headings, the appearance options as radio buttons with the current one selected, and each ambience by its image's title (once #14 caches images). "Show top menu" on Home and "Show Home" on the menu open and close it.
 
+## Gestures (SRS §4.8)
+
+- [ ] [FR-GEST-01, FR-GEST-03] On a device, screen recordings of the App Grid, Events (both sides) and the Top Menu: each stays under the finger from the moment it starts moving, and touching one while it settles stops it under the finger, from where it can be dragged either way. Checked with gesture and 3-button navigation.
+- [ ] [FR-GEST-07, FR-GEST-08] On a device, long-pressing a cover, an app, a folder, an app in a folder, a search result and an empty part of Home each ticks once, as it lifts or its menu opens. With Touch & hold delay set to Long in the system's accessibility settings, each waits that long. With the system's touch feedback off, nothing ticks.
+- [ ] [FR-GEST-05, NFR-A11Y-06] The bar that shows a pulley menu is there, on Events and on an open folder, is visible but quiet over a bright and a dark wallpaper in both appearances, and fades as the menu is pulled. Each tick comes with the next item lighting up.
+- [ ] [AC-10, FR-GEST-09, NFR-A11Y-02] With TalkBack and no swipes: open the App Grid, Events and the Top Menu from Home's actions, launch an app, choose "Clear notifications" from the Events header's actions, and cancel it from the banner, which TalkBack announces as it appears.
+
 ## User interface (SRS §5.1)
 
 - [ ] [UI-01] Every surface floats over the wallpaper on the `glass`, `scrim` or `dim` tokens; no surface has an opaque full-screen background. Checked in both appearances over a bright and a dark wallpaper.

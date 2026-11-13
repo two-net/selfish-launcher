@@ -21,6 +21,12 @@ import io.github.twonet.selfish.ui.tokens.Sizes
  * [onLongClick], and the same touch can then drag it (FR-HOME-06,
  * FR-GRID-06). Screen readers get the lift as the long-click action, labeled
  * [onLongClickLabel].
+ *
+ * Long-presses wait for the system's long-press timeout and tick
+ * (FR-GEST-07): [onLongClick] through the clickable's own long-press
+ * haptic, a lift through whoever made the [LiftDrag] (`ReorderableGrid`).
+ * Both play through `LocalHapticFeedback`, so both follow the Haptic
+ * feedback setting (`LauncherHaptics`, FR-GEST-08).
  */
 fun Modifier.pressable(
     onClickLabel: String? = null,
@@ -69,7 +75,7 @@ fun Modifier.pressable(
  * gesture.
  */
 class LiftDrag(
-    /** The long-press lifted the element; the system's long-press timeout has passed (FR-GEST-07). */
+    /** The long-press lifted the element; the system's long-press timeout has passed. Play the long-press tick here (FR-GEST-07). */
     val onLift: () -> Unit,
     /** The finger moved by this much since the last call, in pixels. */
     val onDrag: (Offset) -> Unit,

@@ -5,8 +5,14 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.Density
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.AppId
@@ -16,17 +22,31 @@ import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.Layer
 import io.github.twonet.selfish.domain.state.LauncherState
 import io.github.twonet.selfish.domain.state.reduce
+import io.github.twonet.selfish.ui.motion.GestureMath
+import io.github.twonet.selfish.ui.tokens.DefaultType
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
+import io.github.twonet.selfish.ui.tokens.Sizes
+import kotlin.math.ln
 
 /**
  * The launcher as the user sees it, for instrumented tests (level I, DESIGN
  * §8.3). Actions go through the real reducer, as in the store, but not
  * through the ports: a launch or an uninstall is only recorded in
- * [dispatched].
+ * [dispatched]. Haptics don't reach the device either: they are recorded in
+ * [haptics].
  */
 class TestLauncher(private val rule: ComposeContentTestRule) {
     val dispatched = mutableListOf<Action>()
     var state by mutableStateOf(LauncherState())
+
+    /** Every haptic that got past the launcher's Haptic feedback setting, in order (FR-GEST-07, FR-GEST-08). */
+    val haptics = mutableListOf<HapticFeedbackType>()
+
+    private val platformHaptics = object : HapticFeedback {
+        override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) {
+            haptics += hapticFeedbackType
+        }
+    }
 
     /**
      * Shows [state]. The system gesture areas are [gestureInsets], none by
@@ -37,7 +57,10 @@ class TestLauncher(private val rule: ComposeContentTestRule) {
         this.state = state
         rule.setContent {
             val density = LocalDensity.current
-            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale ?: density.fontScale)) {
+            CompositionLocalProvider(
+                LocalDensity provides Density(density.density, fontScale ?: density.fontScale),
+                LocalHapticFeedback provides platformHaptics,
+            ) {
                 LauncherTheme { LauncherScreen(this.state, ::dispatch, gestureInsets) }
             }
         }
@@ -49,8 +72,38 @@ class TestLauncher(private val rule: ComposeContentTestRule) {
         state = reduce(state, action).state
     }
 
+    /**
+     * How far a finger moves to pull a pulley menu of [items] down by [rows]
+     * of its rows (FR-GEST-05): item `i` is highlighted from `i + 1` rows to
+     * `i + 2`. It undoes the rubber band, so it lands where the menu's own
+     * math puts it.
+     */
+    fun pullDistance(rows: Float, items: Int): Float {
+        val item = with(rule.density) { maxOf(Sizes.PulleyItem.toPx(), DefaultType.header.lineHeight.toPx()) }
+        val limit = GestureMath.pulleyLimit(item, items)
+        return -limit * ln(1f - item * rows / limit)
+    }
+
+    /**
+     * Pulls the page under [node] slowly down to the middle of item [toItem]
+     * (from 0) of its pulley menu of [items], and lets go without speed
+     * (FR-GEST-05).
+     */
+    fun pull(node: SemanticsNodeInteraction, toItem: Int, items: Int) {
+        val distance = pullDistance(rows = toItem + 1.5f, items = items)
+        node.performTouchInput {
+            down(center)
+            repeat(PULL_STEPS) { moveBy(Offset(0f, distance / PULL_STEPS)) }
+            moveBy(Offset.Zero, delayMillis = PULL_HOLD_MILLIS)
+            up()
+        }
+    }
+
     companion object {
         val NO_INSETS = WindowInsets(0, 0, 0, 0)
+
+        private const val PULL_STEPS = 10
+        private const val PULL_HOLD_MILLIS = 300L
 
         fun app(label: String, removable: Boolean = true) = AppEntry(AppId("pkg.${label.lowercase()}", "Main", 0), label, removable = removable)
 

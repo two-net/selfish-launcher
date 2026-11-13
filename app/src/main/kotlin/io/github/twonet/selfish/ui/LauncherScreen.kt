@@ -46,6 +46,7 @@ import io.github.twonet.selfish.domain.remorse.Destructive
 import io.github.twonet.selfish.domain.remorse.REMORSE_DELAY
 import io.github.twonet.selfish.domain.state.LauncherState
 import io.github.twonet.selfish.domain.state.openFolder
+import io.github.twonet.selfish.ui.components.LauncherHaptics
 import io.github.twonet.selfish.ui.components.RemorseBanner
 import io.github.twonet.selfish.ui.components.onUnhandledTap
 import io.github.twonet.selfish.ui.events.EventsScreen
@@ -148,139 +149,142 @@ fun LauncherScreen(
     val dim = LauncherTheme.colors.dim
 
     WindowBlur { controller.gridProgress }
-    Box(
-        Modifier
-            .fillMaxSize()
-            .onSizeChanged { controller.size = it }
-            // Edge to edge, behind every surface (UI-07).
-            .drawBehind { drawRect(dim, alpha = maxOf(controller.gridProgress, controller.eventsProgress, controller.topMenuProgress)) }
-            .layerGestures(
-                controller = controller,
-                ignored = gestureInsets,
-                scrolls = {
-                    Scrolls(
-                        homeForward = covers.canScrollForward,
-                        homeBackward = covers.canScrollBackward,
-                        gridBackward = grid.canScrollBackward,
-                        topMenuForward = topMenu.canScrollForward,
-                    )
-                },
-                paused = { folderOpen },
-            )
-            .onUnhandledTap(closeMenu)
-            .testTag(LauncherTags.ROOT),
-    ) {
-        HomeScreen(
-            state = state,
-            dispatch = dispatch,
-            coversState = covers,
-            modifier = Modifier
-                .graphicsLayer {
-                    translationY = -controller.gridProgress * size.height
-                    translationX = GestureMath.homeShift(controller.sideways) * size.width
-                }
-                .then(
-                    if (open || eventsOpen || topMenuOpen) {
-                        Modifier.clearAndSetSemantics {}
-                    } else {
-                        // Screen-reader users open the grid, Events and the
-                        // Top Menu without swiping (FR-GEST-09).
-                        Modifier.semantics {
-                            customActions = listOf(
-                                CustomAccessibilityAction(showApps) {
-                                    currentDispatch(Action.LayerSettled(Layer.AppGrid))
-                                    true
-                                },
-                                CustomAccessibilityAction(showEvents) {
-                                    currentDispatch(Action.LayerSettled(Layer.Events))
-                                    true
-                                },
-                                CustomAccessibilityAction(showTopMenu) {
-                                    currentDispatch(Action.LayerSettled(Layer.TopMenu))
-                                    true
-                                },
-                            )
-                        }
+    // Every haptic beneath follows the Haptic feedback setting (FR-GEST-08).
+    LauncherHaptics(state.settings.haptics) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .onSizeChanged { controller.size = it }
+                // Edge to edge, behind every surface (UI-07).
+                .drawBehind { drawRect(dim, alpha = maxOf(controller.gridProgress, controller.eventsProgress, controller.topMenuProgress)) }
+                .layerGestures(
+                    controller = controller,
+                    ignored = gestureInsets,
+                    scrolls = {
+                        Scrolls(
+                            homeForward = covers.canScrollForward,
+                            homeBackward = covers.canScrollBackward,
+                            gridBackward = grid.canScrollBackward,
+                            topMenuForward = topMenu.canScrollForward,
+                        )
                     },
-                ),
-        )
-        if (othersNeeded || !eventsClosed) {
-            EventsScreen(
+                    paused = { folderOpen },
+                )
+                .onUnhandledTap(closeMenu)
+                .testTag(LauncherTags.ROOT),
+        ) {
+            HomeScreen(
                 state = state,
                 dispatch = dispatch,
-                claims = controller.claims,
-                listState = events,
+                coversState = covers,
                 modifier = Modifier
-                    .graphicsLayer { translationX = GestureMath.eventsShift(controller.sideways) * size.width }
+                    .graphicsLayer {
+                        translationY = -controller.gridProgress * size.height
+                        translationX = GestureMath.homeShift(controller.sideways) * size.width
+                    }
                     .then(
-                        if (eventsOpen) {
-                            // And return to Home the same way (FR-GEST-09).
+                        if (open || eventsOpen || topMenuOpen) {
+                            Modifier.clearAndSetSemantics {}
+                        } else {
+                            // Screen-reader users open the grid, Events and the
+                            // Top Menu without swiping (FR-GEST-09).
                             Modifier.semantics {
                                 customActions = listOf(
-                                    CustomAccessibilityAction(showHome) {
-                                        currentDispatch(Action.LayerSettled(Layer.Home))
+                                    CustomAccessibilityAction(showApps) {
+                                        currentDispatch(Action.LayerSettled(Layer.AppGrid))
+                                        true
+                                    },
+                                    CustomAccessibilityAction(showEvents) {
+                                        currentDispatch(Action.LayerSettled(Layer.Events))
+                                        true
+                                    },
+                                    CustomAccessibilityAction(showTopMenu) {
+                                        currentDispatch(Action.LayerSettled(Layer.TopMenu))
                                         true
                                     },
                                 )
                             }
-                        } else {
-                            Modifier.clearAndSetSemantics {}
                         },
                     ),
             )
-        }
-        if (othersNeeded || !closed) {
-            AppGrid(
-                state = state,
-                dispatch = dispatch,
-                gridState = grid,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { translationY = (1f - controller.gridProgress) * size.height }
-                    .then(if (closed) Modifier.clearAndSetSemantics {} else Modifier),
-            )
-        }
-        if (othersNeeded || !topMenuClosed) {
-            TopMenu(
-                state = state,
-                dispatch = dispatch,
-                progress = topMenuProgress,
-                catchesTouches = !topMenuClosed,
-                onHeight = topMenuHeight,
-                scrollState = topMenu,
-                modifier = if (topMenuOpen) {
-                    // And close it the same way (FR-GEST-09).
-                    Modifier.semantics {
-                        customActions = listOf(
-                            CustomAccessibilityAction(showHome) {
-                                currentDispatch(Action.LayerSettled(Layer.Home))
-                                true
+            if (othersNeeded || !eventsClosed) {
+                EventsScreen(
+                    state = state,
+                    dispatch = dispatch,
+                    claims = controller.claims,
+                    listState = events,
+                    modifier = Modifier
+                        .graphicsLayer { translationX = GestureMath.eventsShift(controller.sideways) * size.width }
+                        .then(
+                            if (eventsOpen) {
+                                // And return to Home the same way (FR-GEST-09).
+                                Modifier.semantics {
+                                    customActions = listOf(
+                                        CustomAccessibilityAction(showHome) {
+                                            currentDispatch(Action.LayerSettled(Layer.Home))
+                                            true
+                                        },
+                                    )
+                                }
+                            } else {
+                                Modifier.clearAndSetSemantics {}
                             },
-                        )
-                    }
-                } else {
-                    Modifier.clearAndSetSemantics {}
-                },
-            )
-        }
-        val remorse = state.remorse
-        if (remorse != null) {
-            val label = when (remorse.action) {
-                is Destructive.RemoveFolder -> stringResource(R.string.remorse_remove_folder)
-                is Destructive.ClearNotifications -> stringResource(R.string.remorse_clear_notifications)
+                        ),
+                )
             }
-            RemorseBanner(
-                label = label,
-                cancelLabel = stringResource(R.string.remorse_cancel, label),
-                number = remorse.number,
-                duration = REMORSE_DELAY,
-                onCancel = { dispatch(Action.CancelRemorse) },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .windowInsetsPadding(WindowInsets.safeDrawing)
-                    .padding(Spacing.Gutter)
-                    .testTag(LauncherTags.REMORSE),
-            )
+            if (othersNeeded || !closed) {
+                AppGrid(
+                    state = state,
+                    dispatch = dispatch,
+                    gridState = grid,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { translationY = (1f - controller.gridProgress) * size.height }
+                        .then(if (closed) Modifier.clearAndSetSemantics {} else Modifier),
+                )
+            }
+            if (othersNeeded || !topMenuClosed) {
+                TopMenu(
+                    state = state,
+                    dispatch = dispatch,
+                    progress = topMenuProgress,
+                    catchesTouches = !topMenuClosed,
+                    onHeight = topMenuHeight,
+                    scrollState = topMenu,
+                    modifier = if (topMenuOpen) {
+                        // And close it the same way (FR-GEST-09).
+                        Modifier.semantics {
+                            customActions = listOf(
+                                CustomAccessibilityAction(showHome) {
+                                    currentDispatch(Action.LayerSettled(Layer.Home))
+                                    true
+                                },
+                            )
+                        }
+                    } else {
+                        Modifier.clearAndSetSemantics {}
+                    },
+                )
+            }
+            val remorse = state.remorse
+            if (remorse != null) {
+                val label = when (remorse.action) {
+                    is Destructive.RemoveFolder -> stringResource(R.string.remorse_remove_folder)
+                    is Destructive.ClearNotifications -> stringResource(R.string.remorse_clear_notifications)
+                }
+                RemorseBanner(
+                    label = label,
+                    cancelLabel = stringResource(R.string.remorse_cancel, label),
+                    number = remorse.number,
+                    duration = REMORSE_DELAY,
+                    onCancel = { dispatch(Action.CancelRemorse) },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .windowInsetsPadding(WindowInsets.safeDrawing)
+                        .padding(Spacing.Gutter)
+                        .testTag(LauncherTags.REMORSE),
+                )
+            }
         }
     }
 }

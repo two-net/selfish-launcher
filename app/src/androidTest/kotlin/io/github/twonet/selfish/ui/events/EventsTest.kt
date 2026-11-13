@@ -2,6 +2,7 @@ package io.github.twonet.selfish.ui.events
 
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
@@ -42,16 +43,12 @@ import io.github.twonet.selfish.ui.TestLauncher.Companion.app
 import io.github.twonet.selfish.ui.TestLauncher.Companion.launcher
 import io.github.twonet.selfish.ui.components.ClockFormat
 import io.github.twonet.selfish.ui.home.HomeTags
-import io.github.twonet.selfish.ui.motion.GestureMath
-import io.github.twonet.selfish.ui.tokens.DefaultType
-import io.github.twonet.selfish.ui.tokens.Sizes
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.time.Instant
 import java.time.ZoneId
 import java.util.Date
-import kotlin.math.ln
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -59,8 +56,8 @@ import kotlin.test.assertTrue
 /**
  * Events as the user sees it (level I, DESIGN §8.3), through
  * [TestLauncher]: the sideways swipes, the header, the wallpaper card, the
- * notifications and the pulley menu. The pulley's haptics and real
- * notifications are checked by hand (REVIEW-CHECKLIST.md).
+ * notifications and the pulley menu. How the pulley's ticks feel, and real
+ * notifications, are checked by hand (REVIEW-CHECKLIST.md).
  */
 @RunWith(AndroidJUnit4::class)
 class EventsTest {
@@ -344,21 +341,13 @@ class EventsTest {
         show(withNotifications(hello, invoice, music).copy(wallpaper = wallpaper))
 
         // Slowly down to the middle of the second item, "Clear notifications".
-        val item = with(rule.density) { maxOf(Sizes.PulleyItem.toPx(), DefaultType.header.lineHeight.toPx()) }
-        val limit = GestureMath.pulleyLimit(item, 2)
-        val pull = item * 2.5f
-        val distance = -limit * ln(1f - pull / limit)
-        rule.onNodeWithTag(EventsTags.HEADER).performTouchInput {
-            down(center)
-            repeat(STEPS) { moveBy(Offset(0f, distance / STEPS)) }
-            moveBy(Offset.Zero, delayMillis = HOLD_MILLIS)
-            up()
-        }
+        launcher.pull(rule.onNodeWithTag(EventsTags.HEADER), toItem = 1, items = 2)
         rule.mainClock.advanceTimeBy(SETTLE_MILLIS)
         rule.waitForIdle()
 
         val pending = state.remorse?.action
         assertEquals(Destructive.ClearNotifications(setOf(hello.ref, invoice.ref)), pending, "Dispatched: ${launcher.dispatched}")
+        assertEquals(listOf(HapticFeedbackType.SegmentTick, HapticFeedbackType.SegmentTick), launcher.haptics, "A tick for each item")
         rule.onNode(row("Hello")).assertIsDisplayed()
         val banner = context.getString(R.string.remorse_cancel, string(R.string.remorse_clear_notifications))
         rule.onNode(hasContentDescription(banner) and hasTestTag(LauncherTags.REMORSE)).assertIsDisplayed().performClick()

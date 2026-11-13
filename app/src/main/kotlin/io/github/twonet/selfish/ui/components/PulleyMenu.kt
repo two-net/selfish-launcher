@@ -1,7 +1,5 @@
 package io.github.twonet.selfish.ui.components
 
-import android.os.Build
-import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -23,12 +21,13 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextAlign
@@ -53,10 +52,11 @@ class PulleyItem(val label: String, val onSelect: () -> Unit)
  * §6.4). While [atTop], pulling the page down past its top reveals [items]
  * one at a time above it, the first one nearest the page, stretching with
  * rubber-band resistance. The item that has just come fully into view is
- * highlighted, with a tick whenever that changes ([haptics]); releasing
- * flashes it in the highlight color and chooses it, and releasing before
- * the first item cancels. A short bar at the top shows that the menu is
- * there.
+ * highlighted, with a tick whenever that changes, played through
+ * `LocalHapticFeedback` so it follows the Haptic feedback setting
+ * (FR-GEST-08). Releasing flashes it in the highlight color and chooses it,
+ * and releasing before the first item cancels. A short bar at the top shows
+ * that the menu is there.
  *
  * Pulls are recognized like the launcher's swipes (DESIGN §6.3): the page is
  * watched before its elements, and a touch that moves down past the slop
@@ -71,13 +71,12 @@ class PulleyItem(val label: String, val onSelect: () -> Unit)
 fun PulleyMenu(
     items: List<PulleyItem>,
     atTop: () -> Boolean,
-    haptics: Boolean,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val pulley = remember(scope) { Pulley(scope) }
-    val view = LocalView.current
+    val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
     val header = LauncherTheme.type.header
     // Rows grow with the font scale, so a large label still fits its row.
@@ -86,7 +85,7 @@ fun PulleyMenu(
         pulley.items = items
         pulley.item = rowPx
         pulley.atTop = atTop
-        pulley.onTick = { if (haptics) view.performHapticFeedback(TICK) }
+        pulley.onTick = { haptics.performHapticFeedback(HapticFeedbackType.SegmentTick) }
     }
     val colors = LauncherTheme.colors
     val highlight = LauncherTheme.highlight
@@ -149,13 +148,6 @@ fun pulleyActions(items: List<PulleyItem>): List<CustomAccessibilityAction> = it
         item.onSelect()
         true
     }
-}
-
-/** The tick played as the highlight moves to another item (FR-GEST-05, DESIGN §6.4). */
-private val TICK = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-    HapticFeedbackConstants.SEGMENT_TICK
-} else {
-    HapticFeedbackConstants.CLOCK_TICK
 }
 
 /** A pulley menu's pull: transient UI state (AR-02), owned by the page. */

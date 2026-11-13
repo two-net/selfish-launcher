@@ -111,6 +111,19 @@ class LayerRulesTest {
     }
 
     @Test
+    @Verifies("FR-GEST-08")
+    fun `haptics play only through LocalHapticFeedback, which the launcher gates by its setting`() {
+        val direct = (sources(appRoot) + sources(adaptersRoot))
+            .flatMap { source -> source.matching(DIRECT_HAPTICS) }
+        val ungated = sources(appRoot)
+            .filter { it.relativePath != "ui/components/Haptics.kt" }
+            .flatMap { source -> source.matching(listOf(HAPTICS_PROVIDED)) }
+
+        assertEquals(emptyList(), direct, "Play haptics through LocalHapticFeedback, so Haptic feedback Off silences them")
+        assertEquals(emptyList(), ungated, "Only LauncherHaptics provides LocalHapticFeedback")
+    }
+
+    @Test
     @Verifies("AR-09")
     fun `optional adapters are referenced by no other adapter`() {
         val offenders = sources(adaptersRoot).flatMap { source ->
@@ -170,6 +183,21 @@ class LayerRulesTest {
             ),
             Regex("""^import\s+android\.media\.\*"""),
         )
+
+        /**
+         * Haptics that bypass `LocalHapticFeedback`, and so the Haptic
+         * feedback setting (FR-GEST-08): a View's, which takes one of the
+         * platform's constants, and the vibrator's. Calls such as
+         * `LocalHapticFeedback.current.performHapticFeedback(HapticFeedbackType.LongPress)`
+         * are fine.
+         */
+        val DIRECT_HAPTICS = listOf(
+            Regex("""\b(HapticFeedbackConstants|HapticFeedbackConstantsCompat|Vibrator|VibratorManager|VibrationEffect)\b"""),
+            Regex("""\bViewCompat\s*\.\s*performHapticFeedback\b"""),
+            Regex("""\bperformHapticFeedback\(\s*\d"""),
+        )
+
+        val HAPTICS_PROVIDED = Regex("""\bLocalHapticFeedback\s+provides\b""")
 
         val OPTIONAL_PACKAGES = listOf("notifications", "usage")
     }

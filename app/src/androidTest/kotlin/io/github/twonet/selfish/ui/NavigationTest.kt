@@ -14,6 +14,7 @@ import androidx.compose.ui.test.performCustomAccessibilityActionWithLabel
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.swipeWithVelocity
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -126,6 +127,21 @@ class NavigationTest {
     }
 
     @Test
+    @Verifies("FR-GEST-02", "AC-05")
+    fun aShortFlingUpOpensTheGrid() {
+        launcher.show(launcher(apps, home = apps.take(1)))
+
+        // Well short of 30%, but fast.
+        root().performTouchInput {
+            swipeWithVelocity(start = center, end = Offset(centerX, centerY - height * 0.1f), endVelocity = FLING_VELOCITY)
+        }
+        rule.waitForIdle()
+
+        assertEquals(Layer.AppGrid, launcher.state.layer)
+        rule.onNode(gridApp("App 01")).assertIsDisplayed()
+    }
+
+    @Test
     @Verifies("FR-GRID-01", "FR-GEST-04")
     fun aSwipeThatStartsInASystemGestureAreaIsLeftToTheSystem() {
         launcher.show(launcher(apps, home = apps.take(1)), gestureInsets = WindowInsets(bottom = GESTURE_AREA))
@@ -174,8 +190,35 @@ class NavigationTest {
         rule.onNodeWithTag(HomeTags.COVERS).assertIsDisplayed()
     }
 
+    @Test
+    @Verifies("FR-GEST-03", "FR-GRID-04")
+    fun touchingTheGridAsItClosesCatchesItAndPushesItBackUp() {
+        launcher.show(launcher(apps, home = apps.take(1), layer = Layer.AppGrid))
+        rule.mainClock.autoAdvance = false
+
+        // Back starts the grid sliding down; moments later it is still mostly open.
+        launcher.dispatch(Action.Back)
+        rule.mainClock.advanceTimeBy(IN_FLIGHT_MILLIS)
+
+        // A short drag up: caught mid-flight, it goes back the other way.
+        root().performTouchInput {
+            down(center)
+            repeat(10) { moveBy(Offset(0f, -height * 0.01f)) }
+            moveBy(Offset.Zero, delayMillis = HOLD_MILLIS)
+            up()
+        }
+        rule.mainClock.autoAdvance = true
+        rule.waitForIdle()
+
+        assertEquals(Layer.AppGrid, launcher.state.layer)
+        rule.onNode(gridApp("App 01")).assertIsDisplayed()
+    }
+
     private companion object {
         const val HOLD_MILLIS = 300L
+
+        /** Faster than any device's minimum fling velocity, in pixels per second. */
+        const val FLING_VELOCITY = 5_000f
 
         /** How long a settling transition runs before a test touches it. */
         const val IN_FLIGHT_MILLIS = 50L

@@ -34,7 +34,6 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.util.lerp
 import io.github.twonet.selfish.R
 import io.github.twonet.selfish.domain.model.FolderId
-import io.github.twonet.selfish.domain.model.Haptics
 import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.GridCell
 import io.github.twonet.selfish.domain.state.LauncherState
@@ -157,7 +156,6 @@ internal fun FolderPanel(
             PulleyMenu(
                 items = items,
                 atTop = { !gridState.canScrollBackward },
-                haptics = state.settings.haptics != Haptics.Off,
             ) {
                 Column(Modifier.fillMaxWidth()) {
                     EditablePageHeader(
