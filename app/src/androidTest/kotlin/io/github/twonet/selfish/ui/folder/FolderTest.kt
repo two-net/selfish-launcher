@@ -38,13 +38,9 @@ import io.github.twonet.selfish.ui.TestLauncher.Companion.app
 import io.github.twonet.selfish.ui.TestLauncher.Companion.launcher
 import io.github.twonet.selfish.ui.components.FolderIconTags
 import io.github.twonet.selfish.ui.grid.AppGridTags
-import io.github.twonet.selfish.ui.motion.GestureMath
-import io.github.twonet.selfish.ui.tokens.DefaultType
-import io.github.twonet.selfish.ui.tokens.Sizes
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import kotlin.math.ln
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -52,8 +48,8 @@ import kotlin.test.assertTrue
 /**
  * Folders as the user sees them (level I, DESIGN §8.3), in the opened App
  * Grid, through [TestLauncher]. The look of the expand and collapse
- * animation and the pulley's haptics are checked by hand
- * (REVIEW-CHECKLIST.md).
+ * animation and how the pulley's ticks feel are checked by hand
+ * (REVIEW-CHECKLIST.md); `HapticsTest` checks that they play.
  */
 @RunWith(AndroidJUnit4::class)
 class FolderTest {
@@ -226,16 +222,7 @@ class FolderTest {
         openTools()
 
         // Slowly down to the middle of the second item, "Remove folder".
-        val item = with(rule.density) { maxOf(Sizes.PulleyItem.toPx(), DefaultType.header.lineHeight.toPx()) }
-        val limit = GestureMath.pulleyLimit(item, 2)
-        val pull = item * 2.5f
-        val distance = -limit * ln(1f - pull / limit)
-        rule.onNode(header("Tools")).performTouchInput {
-            down(center)
-            repeat(STEPS) { moveBy(Offset(0f, distance / STEPS)) }
-            moveBy(Offset.Zero, delayMillis = HOLD_MILLIS)
-            up()
-        }
+        launcher.pull(rule.onNode(header("Tools")), toItem = 1, items = 2)
         rule.mainClock.advanceTimeBy(SETTLE_MILLIS)
         rule.waitForIdle()
 

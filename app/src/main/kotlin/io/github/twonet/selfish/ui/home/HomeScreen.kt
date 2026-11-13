@@ -1,6 +1,5 @@
 package io.github.twonet.selfish.ui.home
 
-import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,7 +24,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -33,7 +33,6 @@ import io.github.twonet.selfish.R
 import io.github.twonet.selfish.domain.layout.LayoutRules
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.Bounds
-import io.github.twonet.selfish.domain.model.Haptics
 import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.LauncherState
 import io.github.twonet.selfish.domain.state.Layer
@@ -72,12 +71,12 @@ fun HomeScreen(
     coversState: LazyGridState = rememberLazyGridState(),
 ) {
     val menu = state.contextMenu
-    val view = LocalView.current
-    val haptics by rememberUpdatedState(state.settings.haptics != Haptics.Off)
+    // Through LocalHapticFeedback, so it follows the Haptic feedback setting (FR-GEST-08).
+    val haptics = LocalHapticFeedback.current
     val currentDispatch by rememberUpdatedState(dispatch)
-    val openTopMenu = remember(view) {
+    val openTopMenu = remember(haptics) {
         {
-            if (haptics) view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
             currentDispatch(Action.LayerSettled(Layer.TopMenu))
         }
     }

@@ -561,14 +561,14 @@ The release decision, direction lock, rubber band and pull-depth mapping are pur
 
 | Component | Behavior | Serves |
 |---|---|---|
-| `PulleyMenu` | *Built in #8 for folders; #10 used it for Events.* A downward pull at the top of a page is taken over like a swipe (§6.3): watched before the page's elements, and taken once it passes the slop before the long-press timeout, so taps, scrolling and long-presses still work. The pull follows `GestureMath.rubberBand`, which resists more the further it goes, up to one item beyond the last. The items appear one at a time above the page, the first nearest it, and the page grows by the pull. Each row is 48 dp, or a header line if that is taller; item = ⌊pull ÷ row⌋ − 1, none before the first. Each change of item plays a tick haptic (`CLOCK_TICK`, or `SEGMENT_TICK` on API 34+), unless Haptic feedback is Off. Releasing selects the item, which flashes in the highlight color (header size, so 3:1 is enough) for the Short duration before it runs; releasing before the first item cancels. A short bar at the top shows that the menu exists. `pulleyActions` gives the items to the page header as accessibility actions. | FR-GEST-05, FR-ANIM-09, FR-AMB-04 |
+| `PulleyMenu` | *Built in #8 for folders; #10 used it for Events.* A downward pull at the top of a page is taken over like a swipe (§6.3): watched before the page's elements, and taken once it passes the slop before the long-press timeout, so taps, scrolling and long-presses still work. The pull follows `GestureMath.rubberBand`, which resists more the further it goes, up to one item beyond the last. The items appear one at a time above the page, the first nearest it, and the page grows by the pull. Each row is 48 dp, or a header line if that is taller; item = ⌊pull ÷ row⌋ − 1, none before the first. Each change of item plays a tick (`HapticFeedbackType.SegmentTick`: `SEGMENT_TICK` on API 34+, androidx.core's fallback, `CONTEXT_CLICK`, before; #12 moved it from `CLOCK_TICK` when every haptic went through `LauncherHaptics`), unless Haptic feedback is Off. Releasing selects the item, which flashes in the highlight color (header size, so 3:1 is enough) for the Short duration before it runs; releasing before the first item cancels. A short bar at the top shows that the menu exists. `pulleyActions` gives the items to the page header as accessibility actions. | FR-GEST-05, FR-ANIM-09, FR-AMB-04 |
 | `ContextMenu` | A full-width item inserted after the pressed item's row. `animateItem()` pushes later rows down. Dragging the lifted icon closes the menu and starts a move. When it opens below the visible rows, its list scrolls just enough to show it. A disabled item explains itself, as "Add to Home" does on a full Home. `Modifier.onUnhandledTap` closes it on a tap that nothing else handled. | FR-GRID-06, FR-ANIM-08, FR-HOME-05 |
-| `Modifier.onUnhandledLongPress` | *Built in #11.* Like `onUnhandledTap`, it only observes, after the elements under the pointer: it fires once the system's long-press timeout passes with the finger still down, within the touch slop, and the touch not taken by anything, such as a cover's lift. Home uses it to open the Top Menu, with the long-press haptic unless Haptic feedback is Off. | FR-TOP-06, FR-GEST-07, FR-GEST-08 |
-| `ReorderableGrid` | Long-press lifts the item to 110% with a shadow, and the other items reflow with `animateItem()`. The touch is measured inside the lifted item's scale, so each move is scaled back by it and the item stays under the finger (fixed in #8). The order while dragging is transient; only the drop reaches the store, as the item's new index. The lifted item's context menu is a full-span item after its row. *Built in #6 for Home's covers;* #7 added, for the App Grid: a fixed full-width first row (the search field); auto-scrolling while the dragged item is within 64 dp of the top or bottom, faster the deeper it is, with its slot following the finger and the item pinned so it stays composed; and, where the caller allows it, dropping onto the central half of another item. There the target grows to show it will take the drop; around that center, the dragged item takes the other's place only after resting for 250 ms, so passing over an app doesn't push it away. *#8 added* a `DragHandoff` between two grids. Once the dragged item's center leaves the giving grid's area (a folder's panel), that grid hides the item, keeps it composed so it keeps the touch, and forwards the rest of the touch. The receiving grid (the App Grid) lifts the item under the finger as soon as it is among its items; the store has put it at the visible item nearest the finger. This is owned code, because the rules are launcher-specific (§7). | FR-HOME-06, FR-GRID-05, FR-GRID-07, FR-GRID-08, FR-FOLD-05, FR-ANIM-05, FR-ANIM-06 |
+| `Modifier.onUnhandledLongPress` | *Built in #11.* Like `onUnhandledTap`, it only observes, after the elements under the pointer: it fires once the system's long-press timeout passes with the finger still down, within the touch slop, and the touch not taken by anything, such as a cover's lift. Home uses it to open the Top Menu, with the long-press tick. | FR-TOP-06, FR-GEST-07, FR-GEST-08 |
+| `ReorderableGrid` | Long-press lifts the item to 110% with a shadow, with the long-press tick (*#12*; a handed-off item is adopted, not lifted, so it doesn't tick again), and the other items reflow with `animateItem()`. The touch is measured inside the lifted item's scale, so each move is scaled back by it and the item stays under the finger (fixed in #8). The order while dragging is transient; only the drop reaches the store, as the item's new index. The lifted item's context menu is a full-span item after its row. *Built in #6 for Home's covers;* #7 added, for the App Grid: a fixed full-width first row (the search field); auto-scrolling while the dragged item is within 64 dp of the top or bottom, faster the deeper it is, with its slot following the finger and the item pinned so it stays composed; and, where the caller allows it, dropping onto the central half of another item. There the target grows to show it will take the drop; around that center, the dragged item takes the other's place only after resting for 250 ms, so passing over an app doesn't push it away. *#8 added* a `DragHandoff` between two grids. Once the dragged item's center leaves the giving grid's area (a folder's panel), that grid hides the item, keeps it composed so it keeps the touch, and forwards the rest of the touch. The receiving grid (the App Grid) lifts the item under the finger as soon as it is among its items; the store has put it at the visible item nearest the finger. This is owned code, because the rules are launcher-specific (§7). | FR-HOME-06, FR-GRID-05, FR-GRID-07, FR-GRID-08, FR-FOLD-05, FR-ANIM-05, FR-ANIM-06, FR-GEST-07 |
 | `Cover` | A portrait glass card with the app's icon and name, read as the app's name. | FR-HOME-03, NFR-A11Y-01 |
 | `FolderIcon` | A glass square the size of an app icon, previewing a folder's first four apps two by two. Decorative; the folder's tile reads "Folder, ⟨name⟩, ⟨n⟩ apps". | FR-GRID-02, FR-FOLD-02, NFR-A11Y-01 |
 | `RemorseBanner` | *Built in #8.* At the bottom, over every layer, inside the safe-drawing insets, so it doesn't line up with the App Grid's search field; its glass lies on the scrim, so what is beneath doesn't show through its label. It shows the action's label and a bar in the highlight color that shrinks evenly toward the start edge over the 5 s, from when the banner appears. Tapping it dispatches `CancelRemorse`, and the affected item animates back: a folder waiting to be removed is faded until then. | FR-GEST-06, FR-ANIM-12, FR-AMB-04 |
-| `Modifier.pressable` | The only way to handle taps and long-presses. It keeps every touch target at least 48 × 48 dp and uses `LocalIndication`, so `PressGlow` reaches every element. With a `LiftDrag`, a long-press lifts the element and the same touch drags it (`detectDragGesturesAfterLongPress`, inside the clickable so it takes the release); screen readers get the lift as the long-click action. | UI-06, FR-ANIM-04, FR-HOME-06 |
+| `Modifier.pressable` | The only way to handle taps and long-presses. It keeps every touch target at least 48 × 48 dp and uses `LocalIndication`, so `PressGlow` reaches every element. With a `LiftDrag`, a long-press lifts the element and the same touch drags it (`detectDragGesturesAfterLongPress`, inside the clickable so it takes the release); screen readers get the lift as the long-click action. Every long-press waits for the system's long-press timeout and ticks: a plain one with the clickable's own long-press haptic, a lift with `ReorderableGrid`'s. | UI-06, FR-ANIM-04, FR-HOME-06, FR-GEST-07 |
 | `LauncherText` | Text in one of the four roles (display, header, body, label) at primary or secondary emphasis. It takes no color, so body text can't be drawn in the highlight. | UI-04, FR-AMB-04 |
 | `Glass` | A translucent panel in the glass color and shape, for cards, menus and folder panels. | UI-01 |
 | `PageHeader` | Large (header style), full width, `TextAlign.End` so it mirrors in right-to-left languages, in the highlight color, and announced as a heading, with its page's pulley items as accessibility actions. `EditablePageHeader` (#8) turns into a one-line field in the same style when tapped, with the text selected and the keyboard shown; Done, losing focus or the page closing keeps what was typed. Editing is transient UI state, so it needs no keyboard overlay. | UI-02, FR-EVT-02, FR-FOLD-04 |
@@ -581,12 +581,13 @@ The release decision, direction lock, rubber band and pull-depth mapping are pur
 | Top Menu | *Built in #11* (`ui/topmenu/TopMenu`). A glass sheet rounded at the bottom (`Shapes.TopSheet`), padded by the top safe-drawing insets, whose content scrolls when it doesn't fit, as at the largest font sizes. Its labeled parts are headings. **Appearance:** System, Light and Dark as radio buttons; the current one is outlined in the highlight color (`Sizes.SelectedOutline`). **Ambiences**, while `showsAmbiences`: a row with "Daily" and then each cached image's thumbnail (`WallpaperImages`, glass until it loads), portrait (`Sizes.AmbienceWidth`, `AmbienceAspectRatio`) and read by its title, as radio buttons with the active one outlined. **Shortcuts:** "System settings", and "Wallpaper details" once there is a wallpaper; "Launcher settings" arrives with #18. | FR-TOP-02, FR-TOP-03, FR-TOP-04, FR-AMB-04, NFR-A11Y-01, NFR-A11Y-04 |
 | `GestureHint` | A glowing touch point that traces a gesture in the tutorial and in contextual hints. | FR-ANIM-13, FR-ONB-02 |
 
-**Haptics**
+**Haptics** (*#12 made them go through one gate*)
 
-- Haptics use `View.performHapticFeedback`, which already follows the system touch-feedback setting.
-- When the launcher's Haptic feedback setting is Off, the call is skipped (FR-GEST-08, FR-SET-14).
-- Long-press uses the system long-press timeout and plays a tick (FR-GEST-07).
-- Every haptic event also has a visual effect (NFR-A11Y-06).
+- Every haptic plays through Compose's `LocalHapticFeedback`. The platform's implementation calls `View.performHapticFeedback`, which already follows the system's touch-feedback setting.
+- `LauncherHaptics` (`ui/components/Haptics.kt`), around everything `LauncherScreen` draws, provides it: the platform's, or one that plays nothing while the launcher's Haptic feedback setting is Off (FR-GEST-08, FR-SET-14). So the setting reaches the haptics Compose plays itself too: a `combinedClickable`'s long-press and a text field's handles.
+- `LayerRulesTest` fails on a haptic that bypasses it: `HapticFeedbackConstants`, a `View`'s haptics, the vibrator, or another provider of `LocalHapticFeedback`.
+- Every long-press uses the system long-press timeout and plays `LongPress` (FR-GEST-07): a lift (`ReorderableGrid`), a menu opened on a search result (the clickable's own), and the Top Menu opened from empty Home (`onUnhandledLongPress`). The pulley menu plays `SegmentTick` as its highlight moves (FR-GEST-05).
+- Every haptic event also has a visual effect (NFR-A11Y-06): the lift, the menu, the highlighted item.
 
 ### 6.5 Design tokens and ambience (UI-08, AR-04)
 
@@ -619,7 +620,8 @@ The release decision, direction lock, rubber band and pull-depth mapping are pur
 - a literal color, `dp`, `sp`, percent radius, alpha or duration outside `ui/tokens/` (AR-04, UI-08);
 - `clickable`, `combinedClickable`, `selectable` or `toggleable` outside `Modifier.pressable` (UI-06);
 - `BasicText` outside `ui/components/`, or `FontFamily`, `FontWeight` or `TextStyle` outside `ui/tokens/` (UI-04);
-- any audio API (`SoundPool`, `MediaPlayer`, `AudioManager`, `ToneGenerator`, `playSoundEffect`, …), also in `:adapters` (UI-09).
+- any audio API (`SoundPool`, `MediaPlayer`, `AudioManager`, `ToneGenerator`, `playSoundEffect`, …), also in `:adapters` (UI-09);
+- a haptic that bypasses `LocalHapticFeedback` (`HapticFeedbackConstants`, a `View`'s haptics, the vibrator), also in `:adapters`, or `LocalHapticFeedback` provided anywhere but `LauncherHaptics` (FR-GEST-08).
 
 ### 6.6 Wallpaper display
 
@@ -639,7 +641,7 @@ The release decision, direction lock, rubber band and pull-depth mapping are pur
 
 | Feature | Implementation | Serves |
 |---|---|---|
-| Gesture alternatives | Home exposes custom accessibility actions: "Show apps" (built in #7), "Show events" (built in #10) and "Show top menu" (built in #11). Events and the Top Menu expose "Show Home", and each dismissible notification "Dismiss" (#10). Each pulley menu exposes its items as custom actions on its page header (built in #8 for folders, #10 for Events). The remorse banner is a button labeled "Cancel ⟨action⟩" and is announced through a live region. | FR-GEST-09, NFR-A11Y-02, AC-10 |
+| Gesture alternatives | Home exposes custom accessibility actions: "Show apps" (built in #7), "Show events" (built in #10) and "Show top menu" (built in #11). Events and the Top Menu expose "Show Home", and each dismissible notification "Dismiss" (#10). Each pulley menu exposes its items as custom actions on its page header (built in #8 for folders, #10 for Events). The remorse banner is a button labeled "Cancel ⟨action⟩" and is announced through a live region. `AccessibilityTest` (#12) uses them with semantics actions alone, as TalkBack would; folders' and notifications' own actions are in `FolderTest` and `EventsTest`. | FR-GEST-09, NFR-A11Y-02, AC-10 |
 | Labels | Covers and icons read the app's name. Folders read "Folder, ⟨name⟩, ⟨n⟩ apps". | NFR-A11Y-01 |
 | Large text | Grid labels can wrap to two lines at large font scales. Layouts are tested at the largest system font scale for overflow. | FR-GRID-02, NFR-A11Y-04 |
 | Contrast | §6.5 | NFR-A11Y-03 |
@@ -802,12 +804,12 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 
 | Requirements | Level | Verified by |
 |---|---|---|
-| FR-GEST-01, FR-GEST-02, FR-GEST-03, FR-GEST-04 | U, I | `GestureMathTest`: threshold, fling, direction lock, settling either way. `NavigationTest`, `EventsTest`: 1:1 tracking, peek, complete, catching mid-flight, ignoring system gesture areas (AC-05). |
-| FR-GEST-05 | U, I, R | `GestureMathTest`: rubber band, pull depth → item, every item within reach. `FolderTest`: a slow pull chooses the second item. `EventsTest`: a slow pull chooses "Clear notifications". Review item: the tick haptics. |
-| FR-GEST-06 | U, I | `RemorseQueueTest`. `LauncherReducerTest`, `LauncherStoreTest` (virtual time). `FolderTest`: cancel by tapping the banner. `EventsTest`: the same for clearing notifications (AC-06). |
-| FR-GEST-07 | R | Long-press uses the system timeout and plays a tick. |
-| FR-GEST-08 | U, R | `HapticsTest`: Off suppresses haptics. Review: follows the system setting. |
-| FR-GEST-09 | I | `AccessibilityTest`: every gesture-only action is reachable as an accessibility action (AC-10). |
+| FR-GEST-01, FR-GEST-02, FR-GEST-03, FR-GEST-04 | U, I, R | `GestureMathTest`: threshold, fling, direction lock, settling either way. `NavigationTest`, `EventsTest`, `TopMenuTest`: 1:1 tracking, peek, complete, a short fling completing (AC-05), ignoring system gesture areas; `NavigationTest`: catching a transition mid-flight and dragging it either way, sideways and up. Review item: screen recordings. |
+| FR-GEST-05 | U, I, R | `GestureMathTest`: rubber band, pull depth → item, every item within reach. `FolderTest`: a slow pull chooses the second item. `EventsTest`: a slow pull chooses "Clear notifications", with a tick for each item (AC-06). `HapticsTest`: a tick whenever the highlight moves, down and back up, and letting go above the first item cancels. Review items: the indicator, and how the ticks feel. |
+| FR-GEST-06 | U, I | `RemorseQueueTest`. `LauncherReducerTest`, `LauncherStoreTest` (virtual time). `FolderTest`: cancel by tapping the banner. `EventsTest`: the same for clearing notifications (AC-06). `AccessibilityTest`: cancel through the banner's click action. "Sort A–Z" and "Reset layout" arrive with Settings (#18). |
+| FR-GEST-07 | I, R | `HapticsTest`: lifting a cover, an app, a folder or an app in a folder, long-pressing a search result and long-pressing empty Home each tick once. `TopMenuTest`: a long-press on empty Home opens the Top Menu, and a tap doesn't. Review item: on a device, at both Touch & hold delays. |
+| FR-GEST-08 | U, I, R | `LayerRulesTest`: haptics play only through `LocalHapticFeedback`, and only `LauncherHaptics` provides it. `HapticsTest`: with Haptic feedback Off nothing ticks, and every gesture still works. Review item: follows the system's touch-feedback setting. The switch itself arrives with Settings (#18). |
+| FR-GEST-09 | I, R | `AccessibilityTest`: with semantics actions alone, open the App Grid and launch an app, open and close Events and the Top Menu (AC-10), choose a pulley item and cancel its remorse timer. `FolderTest`, `EventsTest`: each pulley item is an action on the page's header. Review item: with TalkBack. |
 
 **Animation (SRS §4.9)**
 
@@ -919,11 +921,11 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 
 | Requirements | Level | Verified by |
 |---|---|---|
-| NFR-A11Y-01, NFR-A11Y-02 | I | `AccessibilityTest`: labels and custom actions (AC-10). |
+| NFR-A11Y-01, NFR-A11Y-02 | I | `AccessibilityTest`: custom actions and the remorse banner's label (AC-10). `AppGridTest`, `FolderTest`, `TopMenuTest`: labels. |
 | NFR-A11Y-03 | U | `ContrastTest`, `DesignTokensTest`, `HighlightColorTest`. |
 | NFR-A11Y-04 | I, R | `AccessibilityTest` at the largest font scale checks for text overflow. |
 | NFR-A11Y-05 | I | `NavigationTest` with reduced motion (AC-09). |
-| NFR-A11Y-06 | R | Every haptic has a visual counterpart. |
+| NFR-A11Y-06 | I, R | `HapticsTest`: with Haptic feedback Off, every long-press and pull still does what it did. Review: every haptic has a visual counterpart. |
 
 **Localization (SRS §6.6)**
 
@@ -967,12 +969,12 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 | AC-02 | I | `AppearanceTest`: Appearance set to Light while the device is dark. |
 | AC-03 | U, R | `WallpaperPolicyTest` with a fake feed and clock. On-device check with a real network. |
 | AC-04 | U, I | `WallpaperPolicyTest`: 3 days of failures in virtual time. `WallpaperDetailsTest`: last update shown. |
-| AC-05 | I | `NavigationTest`. |
-| AC-06 | I | `EventsTest`. |
+| AC-05 | I | `NavigationTest`: 20% and a slow release peeks; 40%, or a short fling, opens the App Grid. |
+| AC-06 | I | `EventsTest`: a slow pull ticks for each item and chooses "Clear notifications"; the banner cancels it. |
 | AC-07 | I, R | `AppGridTest`: a catalog change while the grid is scrolled keeps every item where it is and adds the new app at the end. A real install is a review item. |
 | AC-08 | U, I | `LayoutRulesTest` and `LauncherReducerTest`: the rules. `FolderTest`: A onto B makes "Folder"; dragging B back out dissolves it, leaves A in its place and puts B where it is dropped. |
 | AC-09 | I | `NavigationTest` with the animator scale at 0. |
-| AC-10 | I | `AccessibilityTest`. |
+| AC-10 | I, R | `AccessibilityTest`. Review item: with TalkBack on a device. |
 | AC-11 | R | 24-hour packet capture on the reference device. |
 
 ### 8.5 Continuous integration
