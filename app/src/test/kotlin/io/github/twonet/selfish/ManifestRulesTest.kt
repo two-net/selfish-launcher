@@ -11,8 +11,8 @@ import kotlin.test.assertTrue
 
 /**
  * How the system sees the launcher (DESIGN §5.6): its name and icon, the
- * Home role and the orientation. Runs as a JVM test from the `app` module
- * directory.
+ * Home role, the orientation and the network security config. Runs as a JVM
+ * test from the `app` module directory.
  */
 class ManifestRulesTest {
     private val manifest: Document = parse(File("src/main/AndroidManifest.xml"))
@@ -71,6 +71,18 @@ class ManifestRulesTest {
     @Verifies("FR-GEN-09")
     fun `the launcher is portrait`() {
         assertEquals("portrait", mainActivity.android("screenOrientation"))
+    }
+
+    @Test
+    @Verifies("IF-WP-02")
+    fun `cleartext traffic is refused app-wide`() {
+        assertEquals("@xml/network_security_config", application.android("networkSecurityConfig"))
+        val config = parse(File("src/main/res/xml/network_security_config.xml")).documentElement
+        assertEquals("network-security-config", config.tagName)
+        val base = config.children("base-config").single()
+        assertEquals("false", base.getAttribute("cleartextTrafficPermitted"))
+        assertEquals(emptyList(), config.children("domain-config"), "No domain may opt back into cleartext")
+        assertEquals(emptyList(), config.children("debug-overrides"), "No build may trust user certificates")
     }
 
     private companion object {

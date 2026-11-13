@@ -35,6 +35,8 @@ android {
 
     buildFeatures {
         compose = true
+        // VERSION_NAME, for the Bing feed's User-Agent (DESIGN §5.2).
+        buildConfig = true
     }
 
     lint {

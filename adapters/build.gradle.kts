@@ -37,6 +37,8 @@ kotlin {
 dependencies {
     api(project(":domain"))
     implementation(libs.coroutines.android)
+    // Reads the Bing feed as a JSON tree (DESIGN §5.2); no generated serializers.
+    implementation(libs.serialization.json)
 
     testImplementation(testFixtures(project(":domain")))
     testImplementation(libs.junit)

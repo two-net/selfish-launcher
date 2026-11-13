@@ -51,16 +51,16 @@ issues add their items here. Every release PR signs off the whole list.
 - [ ] [FR-EVT-01, FR-ANIM-01] Swiping left on Home brings Events in from the right and swiping right brings it in from the left, following the finger over a dimming wallpaper; on Events, either swipe brings Home back from the side it is pushed toward, and Back sends Events out the way it came. Checked with gesture and 3-button navigation, and in the `ar-XB` pseudolocale.
 - [ ] [FR-EVT-04] With real notifications (a message, an email, a download in progress, a media player), they are grouped under their app's icon and name, newest first; tapping each opens what it points to over the launcher, also on API 34+ devices including Samsung's, and a message that auto-cancels leaves the list.
 - [ ] [FR-EVT-05] On a device, swiping a message sideways dismisses it from the system's shade too; swiping an ongoing one (media, a download) switches to Home instead, and a vertical drag on a row scrolls the list.
-- [ ] [AC-06, FR-EVT-06, FR-GEST-05, FR-GEST-08] With notifications, pulling Events down slowly highlights "Wallpaper details" (once the feed client, #15, has downloaded an image), then "Clear notifications", with a tick for each, and no tick with the system's touch feedback off. Releasing on "Clear notifications" fades the dismissible ones under a 5-second banner; tapping it brings them back, and letting it run clears only those, not ongoing ones or ones that arrived meanwhile.
+- [ ] [AC-06, FR-EVT-06, FR-GEST-05, FR-GEST-08] With notifications, pulling Events down slowly highlights "Wallpaper details" (once an image is cached), then "Clear notifications", with a tick for each, and no tick with the system's touch feedback off. Releasing on "Clear notifications" fades the dismissible ones under a 5-second banner; tapping it brings them back, and letting it run clears only those, not ongoing ones or ones that arrived meanwhile.
 - [ ] [FR-EVT-07, FR-ONB-04] On a fresh install, "Turn on" on the notifications card opens the launcher's own notification-access screen; granting it and pressing Back lists the notifications. Revoking access in system settings turns the feature off and the card returns. "Hide" hides the card for good, also after a restart.
 - [ ] [NFR-PRIV-05] Nothing in `adapters/notifications`, `ui/events` or the store logs, writes or sends what notifications say; `NotificationItem` and `Posted` print no contents.
 
 ## Top Menu (SRS §4.7)
 
 - [ ] [FR-TOP-01, FR-ANIM-01, FR-GEST-04] On a device, swiping down from the middle of Home pulls the Top Menu down with the finger over a dimming wallpaper, and a short slow pull springs back; a pull that starts on the status bar opens the system's notification shade instead. Checked with gesture and 3-button navigation, and with a display cutout.
-- [ ] [FR-TOP-04] "System settings" opens the Settings app over the launcher, and Back returns to the open Top Menu. Once an image is cached (#15), "Wallpaper details" opens the page over Home, and Back closes it. ("Launcher settings" arrives with #18.)
+- [ ] [FR-TOP-04] "System settings" opens the Settings app over the launcher, and Back returns to the open Top Menu. Once an image is cached, "Wallpaper details" opens the page over Home, and Back closes it. ("Launcher settings" arrives with #18.)
 - [ ] [FR-TOP-06, FR-GEST-07, FR-GEST-08] Long-pressing beside the covers or on the clock opens the Top Menu with a tick, and with no tick when the system's touch feedback is off; long-pressing a cover still lifts it and opens its menu, and Home's menu never opens with it.
-- [ ] [FR-TOP-02, FR-TOP-03, NFR-A11Y-01] With TalkBack, the parts of the menu are read as headings, the appearance options as radio buttons with the current one selected, and each ambience by its image's title (once the feed client, #15, caches images). "Show top menu" on Home and "Show Home" on the menu open and close it.
+- [ ] [FR-TOP-02, FR-TOP-03, NFR-A11Y-01] With TalkBack, the parts of the menu are read as headings, the appearance options as radio buttons with the current one selected, and each ambience by its image's title. "Show top menu" on Home and "Show Home" on the menu open and close it.
 
 ## Gestures (SRS §4.8)
 
@@ -80,14 +80,17 @@ issues add their items here. Every release PR signs off the whole list.
 
 ## Bing wallpaper (SRS §4.10)
 
-Most of these need the feed client (#15) to download real images.
-
 - [ ] [FR-ANIM-10, AC-03] On a device, a new image crossfades in over the Ambient duration with no flash of black or of the old image, and only once the finger lifts: holding a finger on Home while it arrives (for example after "Refresh now") keeps the old one until release. With the App Grid open it changes under the dim. Checked with a screen recording, also with "Remove animations" on (a fade of at most 100 ms).
+- [ ] [AC-03, FR-WP-01, IF-WP-01, IF-WP-04] On a device with a network, after `adb shell pm clear io.github.twonet.selfish` and choosing the launcher as Home: today's image becomes the wallpaper within a minute, `adb shell run-as io.github.twonet.selfish ls no_backup/wallpapers/images` lists up to 8 images, and Wallpaper details shows the title, copyright text, date and market of today's image in the device's market.
 - [ ] [FR-WP-04] The image fills the screen, centered and undistorted, on the reference device and on two other OEM devices (R-5), for a portrait image and for one with only a landscape version, with gesture and 3-button navigation.
 - [ ] [FR-WP-05] With "Also use on lock screen" on, the lock screen shows the image too, and turning it on puts the current one there at once; off, the lock screen keeps what it had. (The switch arrives with Settings, #18.)
 - [ ] [FR-WP-09, FR-WP-10, NFR-A11Y-03] Wallpaper details is legible over a bright and a dark wallpaper in both appearances, shows the title, copyright text, date, market and last update, and its pulley menu offers "Refresh now", then "Keep this wallpaper" or "Resume daily", with a tick for each. With TalkBack, the header offers them as actions and "Checking for a new image…" is announced.
 - [ ] [AR-06, NFR-PWR-02] `adb shell dumpsys jobscheduler` shows the launcher's one periodic job (3 hours, a network required, persisted across a reboot) and at most one retry; it holds no wake lock, alarm or foreground service, and turning Daily off removes both jobs.
 - [ ] [FR-WP-13] Turning Daily Bing wallpaper off (Settings, #18) keeps the current system wallpaper, hides the Ambiences row and the Events card, and leaves `noBackupFilesDir/wallpapers/` empty (`adb shell run-as io.github.twonet.selfish ls no_backup`).
+
+## Bing interface (SRS §5.3)
+
+- [ ] [AC-11, NFR-PRIV-01, IF-WP-02] With Daily Bing wallpaper on, a 24-hour capture of the reference device's traffic (for example PCAPdroid filtered to the launcher, or at the router) shows the launcher connecting only to `bing.com` and `bing.net` hosts, all over TLS on port 443.
 
 ## User interface (SRS §5.1)
 

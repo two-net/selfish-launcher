@@ -312,7 +312,7 @@ With "Covers show: Recently used" (FR-HOME-10, C), Home shows `UsageSource.recen
 
 ### 4.3 Wallpaper policy
 
-`WallpaperPolicy` is a set of pure decisions. Its inputs are the settings, the wallpaper index (cached entries, current and pinned image, last check, last success, failures today), the time, the network state and whether a gesture is in progress. *Built in #14:* `WallpaperUpdater` does the I/O around the decisions through the ports, and the reducer (`state/WallpaperReducer.kt`) keeps `LauncherState` in step and asks for the I/O as effects. Until the feed client (#15) lands, every check fails quietly.
+`WallpaperPolicy` is a set of pure decisions. Its inputs are the settings, the wallpaper index (cached entries, current and pinned image, last check, last success, failures today), the time, the network state and whether a gesture is in progress. *Built in #14:* `WallpaperUpdater` does the I/O around the decisions through the ports, and the reducer (`state/WallpaperReducer.kt`) keeps `LauncherState` in step and asks for the I/O as effects. The feed client behind the `BingFeed` port arrived with #15 (§5.2).
 
 | Decision | Rule | Serves |
 |---|---|---|
@@ -321,7 +321,7 @@ With "Covers show: Recently used" (FR-HOME-10, C), Home shows `UsageSource.recen
 | Daily cap | At most 8 checks per day, retries included, counted in the device's time zone. The user's own requests count but aren't refused. | NFR-PWR-01 |
 | Retries | After a failure, retry after 15 min, then 1 h, then 4 h: consecutive failures choose the delay, and a success starts them over. At most 3 retries per calendar day, whatever succeeded in between. No error UI: the current wallpaper stays. | FR-WP-11 |
 | What to download | Every feed entry whose identity is not already cached, newest first, so the 8 entries asked for on a first run and after a gap of more than a day fill the cache; otherwise 1 entry is asked for. Identity is the hash, or the start date plus market, and must be a safe file name (§5.3). The first image that can't be stored ends the check as a failure, keeping the ones stored. | FR-WP-02, FR-WP-07, IF-WP-01, IF-WP-04 |
-| Which size | The portrait version, falling back to the landscape one (`ImageVariant`; the adapter builds the addresses, #15). `Crop.center(image, screen)` returns the largest centered rectangle with the screen's aspect ratio, from the image size stored with the entry. Images are never scaled non-uniformly. | FR-WP-04 |
+| Which size | The portrait version (1080 × 1920), falling back to the landscape one (1920 × 1080) when Bing has no portrait version (`ImageVariant`; the adapter builds the addresses, §5.2). `Crop.center(image, screen)` returns the largest centered rectangle with the screen's aspect ratio, from the image size stored with the entry. Images are never scaled non-uniformly. | FR-WP-04 |
 | Which images are valid | An empty image, one over 5 MB, or one that doesn't decode in full (`SystemWallpaper.inspect`) is discarded before it is stored. | FR-WP-14, IF-WP-05 |
 | What to apply | The newest cached image, unless an image is pinned (`inUse`). Pinned means new images are still cached but not applied. | FR-WP-01, FR-WP-08, FR-TOP-03 |
 | When to apply | While the launcher is hidden: at once, from the reducer (`applyIfHidden`, after a check, a pin, Daily or `HomeHidden`). While Home is visible: Presentation sends `ApplyWallpaperNow` once no finger is down and nothing is settling, with a crossfade (§6.6). `LauncherState.wallpaperDue` is the image waiting. One the system refuses isn't tried again until it is chosen or another image is due. "Also use on lock screen" applies it to both screens; turning it on puts the current image on the lock screen. | FR-WP-01, FR-WP-05, FR-ANIM-10 |
@@ -407,7 +407,7 @@ Each external dependency from AR-03 has exactly one port and one adapter.
 | `AppCatalog` | `LauncherAppsCatalog` | **Apps:** `LauncherApps` (`getActivityList`, `Callback`, `startMainActivity`, `startAppDetailsActivity`, `getShortcuts`), `UserManager` profiles and serial numbers; the locale and managed-profile broadcasts. **Icons:** `LauncherActivityInfo.getIcon`, and `PackageManager.getUserBadgedIcon` for the profile badge. **Actions:** the `ACTION_DELETE` intent for uninstall; intents for links, the system Settings app and access screens. **Defaults:** resolves the default phone, messaging, browser and camera apps. | FR-GEN-05, FR-GEN-06, FR-GEN-10, FR-HOME-04, FR-HOME-07, FR-HOME-09, FR-GRID-06, FR-GRID-10, FR-EVT-03, FR-TOP-04 |
 | `LocalStorage` | `FileStorage` | `filesDir` for layout and settings; `noBackupFilesDir/wallpapers/` for images and the index; `android.util.AtomicFile`. | FR-GEN-07, FR-WP-07, NFR-PRIV-03, NFR-REL-03, NFR-PWR-04 |
 | `SystemWallpaper` | `AndroidSystemWallpaper` | **Validate:** `ImageDecoder` decodes the whole image, failing on a partial one, and samples it at most 128 pixels across. **Crop and apply:** `ImageDecoder.setCrop` decodes only the crop rectangle; `setBitmap` then applies it to `FLAG_SYSTEM`, plus `FLAG_LOCK` if enabled, or to `FLAG_LOCK` alone. **Screen size:** the default display's real size, in portrait. **Identify:** `getWallpaperId`; `getWallpaperColors` arrives with #16. **Parallax:** `setWallpaperOffsets`, deferred. Images are passed as bytes, so one is checked before it is stored. *Built in #14.* | FR-WP-01, FR-WP-04, FR-WP-05, FR-WP-12, FR-WP-14, FR-AMB-01, FR-AMB-03, FR-ANIM-14 |
-| `BingFeed` | `HttpsBingFeed` | `HttpsURLConnection` and the kotlinx-serialization parser (§5.2). `fetchImage(entry, variant)` builds the portrait or landscape address from `urlBase`. A stub that always fails until #15. | IF-WP-01 to IF-WP-06, FR-WP-02 |
+| `BingFeed` | `HttpsBingFeed` | `HttpsURLConnection` on `Dispatchers.IO` (`runInterruptible`), and kotlinx-serialization's JSON tree for the feed (§5.2). `fetchImage(entry, variant)` builds the portrait or landscape address from `urlBase`. Every failure is a `Result`, never an exception. *Built in #15.* | IF-WP-01 to IF-WP-06, FR-WP-02 |
 | `WallpaperScheduler` | `JobSchedulerWallpaperScheduler` with `WallpaperJobService` | `JobScheduler` (§5.4) | FR-WP-02, FR-WP-06, NFR-PWR-01, NFR-PWR-02, AR-06 |
 | `OsSettings` | `AndroidOsSettings` | **Home role:** `RoleManager.isRoleHeld` and `createRequestRoleIntent(ROLE_HOME)`, started *for result* over the visible Activity, because the prompt identifies its caller through `getCallingPackage()`. **Theme:** `Configuration.uiMode` via `ComponentCallbacks`. **Motion:** `Settings.Global.ANIMATOR_DURATION_SCALE` via a `ContentObserver`, registered only while collected; `animationsOff` is true when it is 0 (*built in #13*). **Network and power** (*built in #14*): `ConnectivityManager` (connected means the default network reaches the internet and is validated, so a captive portal doesn't count; `isActiveNetworkMetered`; Data Saver from `restrictBackgroundStatus`), `PowerManager.isPowerSaveMode`. **Clock:** time-tick, time-zone and 12/24-hour changes. | FR-THM-03, FR-ANIM-15, FR-WP-06, FR-GEN-02, FR-HOME-02, NFR-L10N-02 |
 | `NotificationSource` (optional) | `ListenerNotificationSource` with `LauncherNotificationListener` | `NotificationListenerService` (active notifications, ranking, dismissal, content intents), `NotificationManager.isNotificationListenerAccessGranted`, the listener's access screen in `Settings` | FR-EVT-04 to FR-EVT-07, FR-GRID-11, FR-ONB-04, NFR-PRIV-05 |
@@ -439,17 +439,19 @@ Each external dependency from AR-03 has exactly one port and one adapter.
 
 ### 5.2 Network policy (Bing feed)
 
+*Built in #15* (`adapters/bing/`).
+
 | Rule | Implementation | Serves |
 |---|---|---|
-| Endpoints | The feed is `https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n={1 or 8}&mkt={market}`. Image URLs are built from `urlbase`. | IF-WP-01, IF-WP-04 |
-| HTTPS only, known hosts only | Each URL must be `https` on an allowlisted Bing host (`bing.com`, `bing.net` and their subdomains). | IF-WP-02, NFR-PRIV-01 |
-| Redirects | `instanceFollowRedirects = false`. The adapter follows at most 3 redirects itself, and only to URLs that pass the allowlist. | IF-WP-02 |
-| Cleartext | Disabled app-wide by `network_security_config.xml` (`cleartextTrafficPermitted="false"`). | IF-WP-02 |
-| No identifiers | No `CookieHandler` is installed. The User-Agent is fixed to `SelfishLauncher/<version>`, replacing the platform default, which names the device model and build. Only the market and image size vary between requests. | IF-WP-03 |
-| Size limits | The feed is capped at 256 KB and each image at 5 MB. `Content-Length` is checked first, then a counting stream aborts at the limit. Connect and read timeouts are 15 s each. | IF-WP-05 |
-| Tolerant parsing | `ignoreUnknownKeys`. Every field is optional except the start date and `urlbase` (or `url`). A missing title falls back to the copyright text. | IF-WP-06 |
+| Endpoints | The feed is `https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n={1 to 8}&mkt={market}`. Image addresses are `urlbase` plus `_1080x1920.jpg` (portrait) or `_1920x1080.jpg` (landscape), resolved against `https://www.bing.com/`. Bing answers 404 for a size it doesn't have, so the domain falls back to the landscape image. | IF-WP-01, IF-WP-04, FR-WP-04 |
+| HTTPS only, known hosts only | Every address, including each redirect, must be `https` on a Bing host (`bing.com`, `bing.net` or a subdomain of either), on the default port and without user info. The market is URL-encoded, so it can't change the address. | IF-WP-02, NFR-PRIV-01 |
+| Redirects | `instanceFollowRedirects = false`. The adapter follows at most 3 redirects itself (301, 302, 303, 307, 308), and only to addresses that pass the allowlist. Any status other than 200 fails. | IF-WP-02 |
+| Cleartext | Disabled app-wide by `res/xml/network_security_config.xml` in `:app` (`cleartextTrafficPermitted="false"`, system certificates only). | IF-WP-02 |
+| No identifiers | No `CookieHandler` is installed and `useCaches = false`. The one header set is the User-Agent, `SelfishLauncher/<versionName>`; `AppGraph` passes `BuildConfig.VERSION_NAME`. It replaces the platform default, which names the device model and build. Only the market and image size vary between requests. | IF-WP-03 |
+| Size limits | The feed is capped at 256 KB and each image at 5 MB (`WallpaperPolicy.MAX_IMAGE_BYTES`). `Content-Length` is checked first, then the body is read in a loop that aborts at the limit. Connect and read timeouts are 15 s each. | IF-WP-05 |
+| Tolerant parsing | The feed is read as a JSON tree (`Json.parseToJsonElement`), not into classes, so unknown keys and fields of an unexpected type are ignored. A string field counts only if it is a non-blank string. An entry needs a start date and an image address: `urlbase`, or else `url` cut before its size suffix. Entries without both, or whose address isn't on a Bing host, are left out, so one bad entry can't block the others. A body that isn't JSON or has no `images` array fails the request. A missing title falls back to the copyright text in the domain (`WallpaperPolicy.entryOf`). | IF-WP-06 |
 
-URL building, the allowlist and redirect decision, the counting stream and the JSON parser are pure Kotlin in `adapters/bing/`. They are tested as JVM unit tests against recorded feed samples.
+URL building, the allowlist and redirect decision (`BingRequests`), the limited read (`readLimited`) and the parser (`BingFeedParser`) are pure Kotlin in `adapters/bing/`. They are tested as JVM unit tests, against feeds recorded from Bing in `adapters/src/test/resources/bing/`. `HttpsBingFeed` takes the function that opens a connection, so `HttpsBingFeedTest` drives the request loop over scripted connections without a network.
 
 ### 5.3 Storage and backup
 
@@ -491,7 +493,7 @@ URL building, the allowlist and redirect decision, the counting stream and the J
 
 | Permission | Kind | Why |
 |---|---|---|
-| `INTERNET` | Normal | Bing feed (FR-WP-01). Arrives with the feed client (#15). |
+| `INTERNET` | Normal | Bing feed (FR-WP-01). Declared in the `:adapters` manifest, next to `HttpsBingFeed` (#15). |
 | `ACCESS_NETWORK_STATE` | Normal | Metered and Data Saver state (FR-WP-06). Declared in the `:adapters` manifest (#14). |
 | `SET_WALLPAPER` | Normal | Applying the image (FR-WP-01, FR-WP-05). Declared in the `:adapters` manifest (#14). |
 | `RECEIVE_BOOT_COMPLETED` | Normal | Keeps the wallpaper job across reboots (FR-WP-02); `JobInfo.setPersisted` requires it. Declared in the `:adapters` manifest (#14). |
@@ -678,7 +680,7 @@ Every component that ships, every build tool, and every library deliberately lef
 |---|---|---|
 | Kotlin standard library | All modules | Language runtime (TD-01). |
 | kotlinx-coroutines (`core`; `android` at runtime for `Dispatchers.Main`) | All modules | Structured concurrency for downloads, timers and flows. `StateFlow` is the single-state primitive of AR-02, and tests get virtual time. The Kotlin platform has no equivalent. |
-| kotlinx-serialization-json | `:domain`, `:adapters` | Parses the Bing feed and reads and writes the schema-versioned JSON documents. Serializers are generated at compile time, so it needs no reflection and is safe under R8. It replaces both a JSON library and a database. |
+| kotlinx-serialization-json | `:domain`, `:adapters` | Reads and writes the schema-versioned JSON documents, and parses the Bing feed as a JSON tree (§5.2). Serializers are generated at compile time and the tree needs none, so it needs no reflection and is safe under R8. It replaces both a JSON library and a database. |
 | Jetpack Compose `runtime`, `ui`, `foundation`, `animation` (versions aligned by the Compose BOM) | `:app` | The UI framework (TD-02). Material is excluded. |
 | AndroidX `activity-compose` | `:app` | Hosts Compose in the Activity, and provides `OnBackPressedDispatcher` (predictive back) and edge-to-edge setup. |
 | AndroidX `lifecycle-runtime-compose` | `:app` | `collectAsStateWithLifecycle`, so nothing is collected while the launcher is hidden (NFR-PWR-02). |
@@ -896,9 +898,9 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 
 | Requirements | Level | Verified by |
 |---|---|---|
-| IF-WP-01, IF-WP-04, IF-WP-06 | U | `BingFeedParserTest`: recorded feeds, 1 and 8 entries, missing fields. |
-| IF-WP-02, IF-WP-03 | U | `BingRequestPolicyTest`: HTTPS-only redirects, host allowlist, headers (no cookies, fixed User-Agent). |
-| IF-WP-05 | U | `LimitedStreamTest`: aborts at 5 MB. |
+| IF-WP-01, IF-WP-04, IF-WP-06 | U | `BingFeedParserTest`: recorded feeds, 1 and 8 entries, missing and malformed fields, the title falling back to the copyright text. `BingRequestPolicyTest`: the feed and image addresses. `HttpsBingFeedTest`: the feed requested and read, at most the count asked for. |
+| IF-WP-02, IF-WP-03 | U | `BingRequestPolicyTest`: host allowlist, redirect targets, the User-Agent. `HttpsBingFeedTest`: up to 3 redirects followed, none to `http` or another host, and the only header sent is the User-Agent (no cookies, no cache). `ManifestRulesTest`: cleartext refused app-wide. |
+| IF-WP-05 | U | `LimitedStreamTest`: a read aborts past the limit. `HttpsBingFeedTest`: an image over 5 MB refused by its `Content-Length` before it is read, or as it is read; a feed over 256 KB refused. |
 
 **Performance (SRS §6.1)**
 
@@ -928,7 +930,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 
 | Requirements | Level | Verified by |
 |---|---|---|
-| NFR-PRIV-01 | U, R | `BingRequestPolicyTest`: host allowlist. 24-hour traffic capture (AC-11). |
+| NFR-PRIV-01 | U, R | `BingRequestPolicyTest` and `HttpsBingFeedTest`: host allowlist, also for redirects. Review: 24-hour traffic capture (AC-11). |
 | NFR-PRIV-02, NFR-PRIV-07 | B | `checkDependencies`. |
 | NFR-PRIV-03, NFR-PRIV-05, NFR-PRIV-06 | R | Private storage only; notification contents never stored or logged; review of exported components. |
 | NFR-PRIV-04 | B | `checkPermissions`. |
@@ -983,7 +985,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 |---|---|---|
 | AC-01 | I | `AppearanceTest`: fresh install in dark theme, then switch the system theme. |
 | AC-02 | I | `AppearanceTest`: Appearance set to Light while the device is dark. |
-| AC-03 | U, I, R | `WallpaperStoreTest` with a fake feed and a virtual clock: a new image is applied by the job within 3 hours, or when Home shows after 3 hours, once Presentation is ready. `MotionTest`: after the gesture. On-device check with a real network, once the feed client (#15) lands. |
+| AC-03 | U, I, R | `WallpaperStoreTest` with a fake feed and a virtual clock: a new image is applied by the job within 3 hours, or when Home shows after 3 hours, once Presentation is ready. `MotionTest`: after the gesture. Review items: the first run and a new image with a real network. |
 | AC-04 | U, I | `WallpaperStoreTest`: 3 days offline and 3 days of failures in virtual time keep the image and the last success. `WallpaperDetailsTest`: last update shown. |
 | AC-05 | I | `NavigationTest`: 20% and a slow release peeks; 40%, or a short fling, opens the App Grid. |
 | AC-06 | I | `EventsTest`: a slow pull ticks for each item and chooses "Clear notifications"; the banner cancels it. |
@@ -991,7 +993,7 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 | AC-08 | U, I | `LayoutRulesTest` and `LauncherReducerTest`: the rules. `FolderTest`: A onto B makes "Folder"; dragging B back out dissolves it, leaves A in its place and puts B where it is dropped. |
 | AC-09 | I, R | `NavigationTest` with system animations removed in state, since the test clock runs its own frames. Review item: on a device with "Remove animations". |
 | AC-10 | I, R | `AccessibilityTest`. Review item: with TalkBack on a device. |
-| AC-11 | R | 24-hour packet capture on the reference device. |
+| AC-11 | R | Review item: 24-hour traffic capture on the reference device. |
 
 ### 8.5 Continuous integration
 

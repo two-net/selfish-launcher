@@ -8,11 +8,12 @@
          (FR-HOME-07). -->
     <!-- Opens the system's uninstall confirmation (FR-GRID-06, DESIGN §5.6). -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
-    <!-- Daily Bing wallpaper (DESIGN §5.6): metered and Data Saver state for
+    <!-- Daily Bing wallpaper (DESIGN §5.6): the feed and images for
+         HttpsBingFeed (FR-WP-01), metered and Data Saver state for
          AndroidOsSettings (FR-WP-06), applying the image for
          AndroidSystemWallpaper (FR-WP-01, FR-WP-05), and keeping the
-         wallpaper job across reboots (FR-WP-02). INTERNET arrives with the
-         feed client (#15). -->
+         wallpaper job across reboots (FR-WP-02). -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />

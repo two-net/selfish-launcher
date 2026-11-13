@@ -29,7 +29,7 @@ class AppGraph(context: Context) {
         appCatalog = LauncherAppsCatalog(context, foreground),
         localStorage = FileStorage(context),
         systemWallpaper = AndroidSystemWallpaper(context),
-        bingFeed = HttpsBingFeed(),
+        bingFeed = HttpsBingFeed(appVersion = BuildConfig.VERSION_NAME),
         wallpaperScheduler = JobSchedulerWallpaperScheduler(context),
         osSettings = AndroidOsSettings(context, foreground),
         // Optional features (AR-09): deleting one means deleting its

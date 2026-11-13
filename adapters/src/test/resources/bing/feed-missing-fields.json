@@ -1,0 +1,52 @@
+{
+  "images": [
+    {
+      "startdate": "20261101",
+      "urlbase": "/th?id=OHR.Bare_EN-US1"
+    },
+    {
+      "startdate": "20261105",
+      "url": "/th?id=OHR.UrlOnly_EN-US2_1920x1080.jpg&rf=LaDigue_1920x1080.jpg&pid=hp",
+      "copyright": "A place without a title (© Someone)",
+      "copyrightlink": "javascript:void(0)",
+      "hsh": "aaaabbbbccccddddeeeeffff00001111"
+    },
+    {
+      "startdate": "20261103",
+      "urlbase": "/th?id=OHR.WrongTypes_EN-US3",
+      "title": 42,
+      "hsh": null,
+      "copyright": ["not", "text"],
+      "copyrightlink": { "href": "https://www.bing.com/" },
+      "drk": "1",
+      "somethingNew": { "nested": true }
+    },
+    {
+      "startdate": "20261102",
+      "urlbase": "/th?id=OHR.Blank_EN-US4",
+      "title": "   ",
+      "copyright": "  Trimmed copyright  "
+    },
+    {
+      "urlbase": "/th?id=OHR.NoDate_EN-US5",
+      "title": "No start date"
+    },
+    {
+      "startdate": "20261104",
+      "title": "No image address"
+    },
+    {
+      "startdate": "20261104",
+      "urlbase": "//evil.example/th?id=OHR.Elsewhere_EN-US6",
+      "title": "Not on Bing"
+    },
+    {
+      "startdate": "20261104",
+      "url": "/th?id=OHR.NoSize_EN-US7.jpg",
+      "title": "A url without a size"
+    },
+    "not an entry",
+    7
+  ],
+  "tooltips": { "loading": "Loading..." }
+}
