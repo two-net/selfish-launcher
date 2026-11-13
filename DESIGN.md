@@ -237,7 +237,7 @@ Every component here is plain Kotlin, has no Android imports, and is covered by 
 
 ```
 Layer:    Home | AppGrid | Events | TopMenu | Settings(page) | WallpaperDetails | Tutorial(step)
-Overlays: Folder(id) · ContextMenu(target) · Keyboard     (stacked over a layer)
+Overlays: Folder(id) · ContextMenu(target)     (stacked over a layer)
 ```
 
 | Rule | Serves |
@@ -257,7 +257,8 @@ Overlays: Folder(id) · ContextMenu(target) · Keyboard     (stacked over a laye
 | `RemoveFolder(id)` closes the folder and starts a remorse timer (§4.6); the folder stays, faded and closed to drops and taps, until `RemorseDue(n)` removes it. `CancelRemorse` (a tap on the banner) keeps it. | FR-FOLD-07, FR-GEST-06 |
 | `OpenAppInfo` and `Uninstall` close the menu and emit `Effect.OpenAppInfo` and `Effect.RequestUninstall`, which the store passes to `AppCatalog`. An uninstall the user confirms arrives later as a catalog change. The menu offers Uninstall only for apps that aren't system apps (`AppEntry.removable`, §5.1). | FR-GRID-06, FR-GRID-09 |
 | `Action.LayerSettled(layer)` is where a released swipe, or the screen reader's "Show apps", ends up (§6.3). On the current layer it changes nothing; otherwise it moves there and closes the overlays, which belong to the layer they were opened on. Hiding the launcher leaves the App Grid open, so Back from an app launched from it returns there; a Home press closes it. | FR-GRID-01, FR-GRID-04, FR-GEN-03 |
-| Closing the App Grid clears the search query and hides the keyboard. | FR-SRCH-05 |
+| `Search(query)` sets `LauncherState.query`, only on the App Grid, and closes any context menu, because the results replace the grid's items. The grid shows results while the query has something besides spaces in it (`searching`). *Built in #9.* | FR-SRCH-01 |
+| Closing the App Grid clears the search query and hides the keyboard. The reducer keeps the query empty whenever the layer isn't the App Grid, whichever action left it. Hiding the launcher keeps it, so Back from an app launched from the results returns to them. The keyboard is not an overlay: the system's input method takes Back to hide itself before the launcher sees it, so the keyboard stays with the search field as transient UI state (§6.4), as it does for a folder name being edited. | FR-SRCH-05 |
 | `Settings` holds every setting from SRS §4.13, with the SRS defaults (for example Appearance = System, Daily Bing wallpaper = On). | FR-SET-01 to FR-SET-17, FR-THM-02 |
 
 ### 4.2 Layout rules
@@ -337,11 +338,15 @@ With "Covers show: Recently used" (FR-HOME-10, C), Home shows `UsageSource.recen
 
 ### 4.5 Search ranking
 
-- `normalize(name)` applies NFD decomposition, drops combining marks and lowercases with `Locale.ROOT`. Names are normalized, and split into word starts, once per catalog change, not per keystroke.
-- **Rank 0:** the name or any of its words starts with the query.
+*Built in #9.*
+
+- `TextNormalizer.normalize(text)` applies NFD decomposition, drops combining marks, lowercases with `Locale.ROOT`, and makes each run of spaces one, with none at either end. The query goes through it too.
+- `TextNormalizer.wordStarts(name)`: 0, and every letter or digit that follows something else, such as a space, a hyphen or an apostrophe.
+- `SearchRanker(apps, collator)` normalizes the names, finds their word starts and sorts them by `Collator` once, when it is built. Presentation builds one per catalog change (`remember(state.apps)`), not per keystroke (NFR-PERF-04).
+- **Rank 0:** the name, from its start or from any word start, starts with the query. So "play st" finds "Google Play Store".
 - **Rank 1:** the query appears anywhere else in the name.
-- No match: the app is excluded.
-- Ties are broken by `Collator` order. Apps inside folders are included.
+- No match: the app is excluded. A blank query matches nothing; the grid then shows its items.
+- Ties keep the `Collator` order. The ranker is given the whole catalog, so apps inside folders are included.
 - Serves FR-SRCH-02.
 - `SearchRanker` is a pure function with no ports, so search cannot reach the network (FR-SRCH-06).
 
@@ -502,7 +507,7 @@ Drawing order, back to front:
 4. Events (enters sideways)
 5. App Grid (enters from the bottom)
 6. Top Menu (enters from the top)
-7. Overlays (folder, context menu, keyboard)
+7. Overlays (folder, context menu). The keyboard is the system's own window, over all of them.
 8. Remorse banner
 9. Tutorial hints
 
@@ -545,6 +550,7 @@ The release decision, direction lock, rubber band and pull-depth mapping are pur
 | `AppIcon` | Every app icon at the one icon size. Icons that support a shape (adaptive icons) are clipped to the icon shape; a profile badge is drawn over it unclipped. Until the icon has loaded through `AppIcons` (§5.1), or if it can't load, it shows the label's initial on glass. Decorative to screen readers, because the item's label names the app. | UI-05, FR-GEN-10 |
 | `PressGlow` | A Compose `Indication` that draws a highlight-color glow on the first frame of a press and fades it out over the Short duration. | FR-ANIM-04 |
 | Folder panel | *Built in #8* (`ui/folder/FolderPanel`), as an overlay of the App Grid, which hosts it so the two share a `DragHandoff`. A dim that closes it when tapped covers the grid, and on it a glass panel holds the folder's name (`EditablePageHeader`) and its apps in a `ReorderableGrid`, in a `PulleyMenu` with Rename and Remove folder. It opens centered and then keeps its top, growing downward, so an app's menu opening in it or a pull never moves the app under the finger. It grows from the folder's icon to its own bounds by scale and translation in a `graphicsLayer`, over the Medium duration, and shrinks back into it. While it closes, and while an app dragged out of it is still under the finger, it keeps showing the folder as it was. Closed by a drag-out, it only fades, because the touch is still measured in its coordinates, which shrinking would stretch. | FR-FOLD-03, FR-FOLD-05, FR-ANIM-07 |
+| Search field | *Built in #9* (`ui/search/SearchField`). The App Grid's first row, a `BasicTextField` on glass with the placeholder inside it. Compose has no hint text for screen readers and drops a text field's own content description, so the placeholder, exposed as the field's child, is its only label; how TalkBack reads it is a review item. Each change of its text dispatches `Search`. The field keeps its own editing buffer (cursor and composing text) as transient UI state, because a buffer fed back from the store's collected state could lose keystrokes. The action key is Go, and launches the first result, ranked from the field's own text. Autocorrection is off. While searching, the grid shows the results in the same `ReorderableGrid`, so the field keeps its focus and keyboard, and results fade and move over the Short duration (`Motion.results`). A result opens its menu on a long-press but isn't dragged, because its place among the results says nothing about its place in the grid. "No apps found" appears beneath the field, announced through a live region. When the App Grid closes, the field empties and gives up its focus, which hides the keyboard. When the launcher stops, for example for an app launched from the results, it gives up its focus too, watched on the lifecycle (`LifecycleEventEffect(ON_STOP)`), because the store's state isn't collected while the launcher is stopped. | FR-GRID-03, FR-SRCH-01, FR-SRCH-03, FR-SRCH-04, FR-SRCH-05 |
 | `GestureHint` | A glowing touch point that traces a gesture in the tutorial and in contextual hints. | FR-ANIM-13, FR-ONB-02 |
 
 **Haptics**
@@ -744,8 +750,8 @@ Every M and S requirement in the SRS is listed below with its levels and the pla
 
 | Requirements | Level | Verified by |
 |---|---|---|
-| FR-SRCH-01, FR-SRCH-03, FR-SRCH-04, FR-SRCH-05 | I | `SearchTest`: filters while typing; action key launches the first result; "No apps found"; closing clears the query and keyboard. |
-| FR-SRCH-02 | U | `SearchRankerTest`: case, accents, word starts, ties, apps in folders. |
+| FR-SRCH-01, FR-SRCH-03, FR-SRCH-04, FR-SRCH-05 | U, I, R | `LauncherReducerTest`: typing sets the query only on the App Grid and closes a menu; Back, Home and a settled swipe clear it; hiding the launcher keeps it. `SearchTest`: filters while typing, best first; the action key launches the first result, or nothing without one; "No apps found"; Back, Home and a settled swipe clear the field and its focus; the results come back from a launched app without the keyboard; a result's menu opens, but it isn't dragged. Review item: the real keyboard opens, hides on Back, and Go launches. |
+| FR-SRCH-02 | U, I | `SearchRankerTest`: case, accents, word starts, several words, ties, blank queries, apps in folders. `SearchTest`: an app inside a folder is found. |
 | FR-SRCH-06 | U, R | `SearchRankerTest` (a pure function with no ports). Review: no network code in search. |
 
 **Events (SRS §4.6)**

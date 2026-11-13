@@ -28,7 +28,17 @@ val LAUNCH_TIMEOUT: Duration = 1.seconds
  * The launcher's only state transition: a pure function from the current
  * state and an action to the next state and its effects (AR-02, DESIGN §3.3).
  */
-fun reduce(state: LauncherState, action: Action): Next = when (action) {
+fun reduce(state: LauncherState, action: Action): Next {
+    val next = transition(state, action)
+    // Leaving the App Grid, however it happens, clears its search (FR-SRCH-05).
+    return if (next.state.layer != Layer.AppGrid && next.state.query.isNotEmpty()) {
+        next.copy(state = next.state.copy(query = ""))
+    } else {
+        next
+    }
+}
+
+private fun transition(state: LauncherState, action: Action): Next = when (action) {
     is Action.Restored ->
         offerDefaultHome(
             state.copy(layout = action.layout, settings = action.settings, restored = true, firstRun = action.layout == null),
@@ -137,6 +147,16 @@ fun reduce(state: LauncherState, action: Action): Next = when (action) {
     // layer closes it.
     is Action.LayerSettled ->
         if (action.layer == state.layer) Next(state) else Next(state.copy(layer = action.layer, overlays = emptyList()))
+
+    // Only the App Grid has a search field, so a late keystroke after it
+    // closed changes nothing. The results replace the grid's items, so a
+    // menu opened on one of them closes as the query changes (FR-SRCH-01).
+    is Action.Search ->
+        if (state.layer != Layer.AppGrid || action.query == state.query) {
+            Next(state)
+        } else {
+            Next(closeContextMenu(state).copy(query = action.query))
+        }
 
     is Action.MoveGridItem ->
         Next(closeContextMenu(state.editLayout { LayoutRules.moveItem(it, action.item, action.to) }))

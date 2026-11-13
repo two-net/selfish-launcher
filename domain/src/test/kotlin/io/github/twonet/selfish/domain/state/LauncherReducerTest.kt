@@ -616,4 +616,55 @@ class LauncherReducerTest {
 
         assertEquals(time, reduce(homeState, Action.ClockChanged(time)).state.clock)
     }
+
+    // Search (FR-SRCH-01, FR-SRCH-05)
+
+    private val gridState = homeState.copy(layer = Layer.AppGrid)
+    private val searched = gridState.copy(query = "ma")
+
+    @Test
+    @Verifies("FR-SRCH-01")
+    fun `typing in the App Grid sets the query`() {
+        val next = reduce(gridState, Action.Search("ma"))
+
+        assertEquals(searched, next.state)
+        assertTrue(next.state.searching)
+        assertEquals(emptyList(), next.effects)
+        assertSame(searched, reduce(searched, Action.Search("ma")).state, "The same text changes nothing")
+        assertFalse(gridState.copy(query = "  ").searching, "Spaces alone search for nothing")
+    }
+
+    @Test
+    @Verifies("FR-SRCH-01")
+    fun `typing anywhere but the App Grid changes nothing`() {
+        assertSame(homeState, reduce(homeState, Action.Search("ma")).state)
+    }
+
+    @Test
+    @Verifies("FR-SRCH-01")
+    fun `typing closes a menu opened on a result`() {
+        val next = reduce(searched.copy(overlays = listOf(gridMenu)), Action.Search("map")).state
+
+        assertEquals(gridState.copy(query = "map"), next)
+    }
+
+    @Test
+    @Verifies("FR-SRCH-05")
+    fun `closing the App Grid clears the query`() {
+        assertEquals(homeState, reduce(searched, Action.Back).state)
+        assertEquals(homeState, reduce(searched, Action.HomePressed).state)
+        assertEquals(homeState, reduce(searched, Action.LayerSettled(Layer.Home)).state)
+        assertEquals("ma", reduce(searched.copy(overlays = listOf(gridMenu)), Action.Back).state.query, "Back closes the menu first")
+    }
+
+    @Test
+    @Verifies("FR-SRCH-05")
+    fun `an app launched from the results returns to them`() {
+        val launched = reduce(searched.copy(homeShown = true), Action.Launch(maps.id, null)).state
+
+        val back = reduce(reduce(launched, Action.HomeHidden).state, Action.HomeShown).state
+
+        assertEquals(Layer.AppGrid, back.layer)
+        assertEquals("ma", back.query)
+    }
 }

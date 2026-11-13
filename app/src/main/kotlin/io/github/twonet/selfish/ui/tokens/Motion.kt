@@ -36,6 +36,12 @@ object Motion {
     fun <T> reflow(): FiniteAnimationSpec<T> = tween(MEDIUM_MILLIS)
 
     /**
+     * Search results fading in and out and moving into place as the query
+     * changes (FR-SRCH-01), quicker than [reflow] so they keep up with typing.
+     */
+    fun <T> results(): FiniteAnimationSpec<T> = tween(SHORT_MILLIS)
+
+    /**
      * A folder expanding from its tile into its panel and collapsing back
      * into it, and the dim behind it (FR-FOLD-03, FR-ANIM-07). #13 adds the
      * enter and exit easings.

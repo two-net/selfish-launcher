@@ -11,9 +11,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,9 +28,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import io.github.twonet.selfish.R
@@ -38,8 +39,10 @@ import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.AppId
 import io.github.twonet.selfish.domain.model.Bounds
 import io.github.twonet.selfish.domain.model.FolderId
+import io.github.twonet.selfish.domain.search.SearchRanker
 import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.GridCell
+import io.github.twonet.selfish.domain.state.Layer
 import io.github.twonet.selfish.domain.state.LauncherState
 import io.github.twonet.selfish.domain.state.MenuTarget
 import io.github.twonet.selfish.domain.state.contextMenu
@@ -47,23 +50,23 @@ import io.github.twonet.selfish.domain.state.gridCells
 import io.github.twonet.selfish.domain.state.homeFull
 import io.github.twonet.selfish.domain.state.openFolder
 import io.github.twonet.selfish.domain.state.pendingRemoval
+import io.github.twonet.selfish.domain.state.searching
 import io.github.twonet.selfish.ui.components.AppIcon
 import io.github.twonet.selfish.ui.components.ContextMenu
 import io.github.twonet.selfish.ui.components.ContextMenuItem
 import io.github.twonet.selfish.ui.components.DragHandoff
 import io.github.twonet.selfish.ui.components.FolderIcon
-import io.github.twonet.selfish.ui.components.Glass
 import io.github.twonet.selfish.ui.components.LauncherText
 import io.github.twonet.selfish.ui.components.LiftDrag
 import io.github.twonet.selfish.ui.components.ReorderableGrid
 import io.github.twonet.selfish.ui.components.onBoundsInWindow
 import io.github.twonet.selfish.ui.components.pressable
 import io.github.twonet.selfish.ui.folder.FolderPanel
+import io.github.twonet.selfish.ui.search.SearchField
 import io.github.twonet.selfish.ui.tokens.Emphasis
 import io.github.twonet.selfish.ui.tokens.LARGE_FONT_SCALE
 import io.github.twonet.selfish.ui.tokens.Motion
 import io.github.twonet.selfish.ui.tokens.PENDING_ALPHA
-import io.github.twonet.selfish.ui.tokens.Sizes
 import io.github.twonet.selfish.ui.tokens.Spacing
 import io.github.twonet.selfish.ui.tokens.TextRole
 
@@ -81,6 +84,12 @@ import io.github.twonet.selfish.ui.tokens.TextRole
  * its [FolderPanel] when tapped (FR-FOLD-03). An app dragged out of the
  * panel carries on being dragged here, through a shared [DragHandoff].
  *
+ * Typing in the [SearchField] replaces the items with the apps that match,
+ * best first, including those inside folders, or "No apps found"
+ * (FR-SRCH-01, FR-SRCH-02, FR-SRCH-04). A result opens its menu when
+ * long-pressed, but isn't dragged: its place among the results says nothing
+ * about its place in the grid.
+ *
  * [gridState] is hoisted so the layer's gesture can tell whether the grid is
  * at the top (FR-GRID-04) and scroll it back there before it opens
  * (FR-GRID-03).
@@ -91,6 +100,13 @@ fun AppGrid(state: LauncherState, dispatch: (Action) -> Unit, gridState: LazyGri
     val open = state.openFolder
     val pending = state.pendingRemoval
     val menuApp = (state.contextMenu as? MenuTarget.App)?.app
+    // Names are folded once per catalog change, not per keystroke (NFR-PERF-04).
+    val ranker = remember(state.apps) { SearchRanker(state.apps) }
+    val searching = state.searching
+    val results = remember(ranker, state.query) { if (searching) ranker.rank(state.query) else null }
+    val shown = results?.map(GridCell::App) ?: cells
+    // The field and the best result stay in view as the query changes.
+    LaunchedEffect(gridState, state.query) { gridState.scrollToItem(0) }
     val padding = WindowInsets.safeDrawing
         .add(WindowInsets(left = Spacing.Gutter, top = Spacing.Gutter, right = Spacing.Gutter, bottom = Spacing.Gutter))
         .asPaddingValues()
@@ -101,7 +117,7 @@ fun AppGrid(state: LauncherState, dispatch: (Action) -> Unit, gridState: LazyGri
 
     Box(modifier) {
         ReorderableGrid(
-            items = cells,
+            items = shown,
             key = GridCell::key,
             columns = state.settings.gridColumns,
             onLift = { cell ->
@@ -117,7 +133,7 @@ fun AppGrid(state: LauncherState, dispatch: (Action) -> Unit, gridState: LazyGri
                 .testTag(AppGridTags.GRID)
                 // An open folder is all a screen reader sees (FR-FOLD-03).
                 .then(if (open != null) Modifier.clearAndSetSemantics {} else Modifier),
-            menuFor = cells.firstOrNull { it is GridCell.App && it.entry.id == menuApp },
+            menuFor = shown.firstOrNull { it is GridCell.App && it.entry.id == menuApp },
             menu = { cell -> if (cell is GridCell.App) AppMenu(cell.entry, state, dispatch) },
             // Only apps are dropped onto things, and folders don't nest (FR-FOLD-08).
             canDropOnto = { dragged, target ->
@@ -131,13 +147,24 @@ fun AppGrid(state: LauncherState, dispatch: (Action) -> Unit, gridState: LazyGri
                     }
                 }
             },
-            header = { SearchField() },
+            // The same first row whether searching or not, so the field keeps
+            // its focus and keyboard as the items change.
+            header = {
+                SearchHeader(
+                    state = state,
+                    noResults = results?.isEmpty() == true,
+                    dispatch = dispatch,
+                    onGo = { text -> ranker.rank(text).firstOrNull()?.let { dispatch(Action.Launch(it.id, null)) } },
+                )
+            },
             contentPadding = padding,
             gridState = gridState,
             handoff = handoff,
+            itemFade = if (searching) Motion.results() else Motion.reflow(),
+            itemPlacement = if (searching) Motion.results() else Motion.reflow(),
         ) { cell, liftDrag ->
             when (cell) {
-                is GridCell.App -> AppTile(cell.entry, labelLines, liftDrag, dispatch)
+                is GridCell.App -> AppTile(cell.entry, labelLines, if (searching) null else liftDrag, dispatch)
                 is GridCell.Folder -> FolderTile(
                     cell = cell,
                     labelLines = labelLines,
@@ -181,15 +208,20 @@ private val GridCell.key: String
         is GridCell.Folder -> "folder:${folder.id.value}"
     }
 
-/** An app's icon and label; tapping launches it from its icon (FR-HOME-04, FR-ANIM-02). */
+/**
+ * An app's icon and label; tapping launches it from its icon (FR-HOME-04,
+ * FR-ANIM-02). A long-press lifts it with [liftDrag], or without one, as in
+ * search results, only opens its menu (FR-GRID-06).
+ */
 @Composable
-internal fun AppTile(app: AppEntry, labelLines: Int, liftDrag: LiftDrag, dispatch: (Action) -> Unit) {
+internal fun AppTile(app: AppEntry, labelLines: Int, liftDrag: LiftDrag?, dispatch: (Action) -> Unit) {
     var bounds by remember { mutableStateOf<Bounds?>(null) }
     Tile(
         label = app.label,
         labelLines = labelLines,
         modifier = Modifier.pressable(
             onLongClickLabel = stringResource(R.string.action_open_menu),
+            onLongClick = { dispatch(Action.OpenContextMenu(MenuTarget.App(app.id))) },
             liftDrag = liftDrag,
             // The app's window grows from its icon (FR-ANIM-02).
             onClick = { dispatch(Action.Launch(app.id, bounds)) },
@@ -264,25 +296,29 @@ internal fun AppMenu(app: AppEntry, state: LauncherState, dispatch: (Action) -> 
 }
 
 /**
- * Where the search field goes, above the first row (FR-GRID-03). Search
- * itself arrives with #9, which replaces this; until then it is shown, and
- * read by screen readers, as disabled.
+ * The App Grid's first row: the [SearchField] (FR-GRID-03), and beneath it
+ * "No apps found" when the query matches nothing (FR-SRCH-04), which screen
+ * readers announce as it appears.
  */
 @Composable
-private fun SearchField() {
-    Glass(
-        modifier = Modifier
-            .fillMaxWidth()
-            .sizeIn(minHeight = Sizes.MinTouchTarget)
-            .semantics(mergeDescendants = true) { disabled() }
-            .testTag(AppGridTags.SEARCH),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        LauncherText(
-            text = stringResource(R.string.grid_search_placeholder),
-            modifier = Modifier.padding(horizontal = Spacing.Gutter),
-            emphasis = Emphasis.Secondary,
-            maxLines = 1,
+private fun SearchHeader(state: LauncherState, noResults: Boolean, dispatch: (Action) -> Unit, onGo: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.Large)) {
+        SearchField(
+            query = state.query,
+            open = state.layer == Layer.AppGrid,
+            onQuery = { dispatch(Action.Search(it)) },
+            onGo = onGo,
+            modifier = Modifier.testTag(AppGridTags.SEARCH),
         )
+        if (noResults) {
+            LauncherText(
+                text = stringResource(R.string.search_no_results),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { liveRegion = LiveRegionMode.Polite },
+                emphasis = Emphasis.Secondary,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }

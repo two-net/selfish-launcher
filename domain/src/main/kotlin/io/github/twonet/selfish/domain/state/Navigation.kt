@@ -21,8 +21,10 @@ sealed interface Layer {
 
 /**
  * Something open over a [Layer], such as a folder. Overlays stack; System
- * Back closes the topmost one first (FR-GEN-04). Feature issues add the
- * keyboard (#9).
+ * Back closes the topmost one first (FR-GEN-04). The on-screen keyboard is
+ * not one: the system's input method takes Back to hide itself before the
+ * launcher sees it, so the keyboard stays with the field that shows it, as
+ * transient UI state (DESIGN §4.1).
  */
 sealed interface Overlay {
     /**

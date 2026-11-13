@@ -1,6 +1,7 @@
 package io.github.twonet.selfish.ui.components
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.gestures.scrollBy
@@ -38,6 +39,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.toOffset
 import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.zIndex
@@ -87,6 +89,10 @@ import kotlinx.coroutines.launch
  * [header], if given, is a full-width first row that never moves, such as
  * the App Grid's search field. [key] must be unique and stable, and the same
  * for the same thing in two grids that hand drags to each other.
+ *
+ * When [items] change, items fade in and out with [itemFade] and move to
+ * their new slots with [itemPlacement]: [Motion.reflow] by default, and
+ * [Motion.results] for search results (FR-SRCH-01).
  */
 @Composable
 fun <T> ReorderableGrid(
@@ -108,6 +114,8 @@ fun <T> ReorderableGrid(
     handoff: DragHandoff? = null,
     onHandOff: ((item: T, centerInWindow: Offset) -> Unit)? = null,
     handOffOutside: () -> Rect = { Rect.Zero },
+    itemFade: FiniteAnimationSpec<Float> = Motion.reflow(),
+    itemPlacement: FiniteAnimationSpec<IntOffset> = Motion.reflow(),
     itemContent: @Composable (item: T, liftDrag: LiftDrag) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -217,9 +225,9 @@ fun <T> ReorderableGrid(
                             .zIndex(if (moving) 1f else 0f)
                             // The dragged item follows the finger, not its slot.
                             .animateItem(
-                                fadeInSpec = Motion.reflow(),
-                                placementSpec = if (moving) null else Motion.reflow(),
-                                fadeOutSpec = Motion.reflow(),
+                                fadeInSpec = itemFade,
+                                placementSpec = if (moving) null else itemPlacement,
+                                fadeOutSpec = itemFade,
                             )
                             .graphicsLayer {
                                 if (itemKey == drag.dragged) drag.draggedScale = scale

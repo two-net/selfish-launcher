@@ -41,6 +41,12 @@ data class LauncherState(
     val layer: Layer = Layer.Home,
     /** What is open over [layer], bottom to top (FR-GEN-04). */
     val overlays: List<Overlay> = emptyList(),
+    /**
+     * What is typed in the App Grid's search field (FR-SRCH-01). Empty
+     * whenever the App Grid isn't open: closing it clears the query
+     * (FR-SRCH-05). The keyboard is not state: it belongs to the field.
+     */
+    val query: String = "",
     /** Whether the launcher is on screen: between its `onStart` and `onStop`. */
     val homeShown: Boolean = false,
     /** Whether this process has already offered the default Home role (FR-GEN-02). */
@@ -115,6 +121,13 @@ sealed interface GridCell {
         override val item: GridItem get() = folder
     }
 }
+
+/**
+ * Whether the App Grid shows search results instead of its items: the query
+ * has something besides spaces in it (FR-SRCH-01).
+ */
+val LauncherState.searching: Boolean
+    get() = query.isNotBlank()
 
 /** What the open context menu belongs to, if one is open (FR-HOME-06, FR-GRID-06). */
 val LauncherState.contextMenu: MenuTarget?

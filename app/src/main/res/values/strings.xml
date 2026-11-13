@@ -15,8 +15,10 @@
     <!-- App Grid (SRS §4.3) -->
     <string name="menu_app_info">App info</string>
     <string name="menu_uninstall">Uninstall</string>
-    <!-- The search field above the first row; search itself arrives with #9. -->
+    <!-- The search field above the first row, shown while it is empty (FR-GRID-03, FR-SRCH-01). -->
     <string name="grid_search_placeholder">Search apps</string>
+    <!-- Shown under the search field when no app matches what was typed (FR-SRCH-04). -->
+    <string name="search_no_results">No apps found</string>
     <!-- How screen readers read a folder in the App Grid (NFR-A11Y-01): its name, then how many apps it holds. -->
     <plurals name="folder_description">
         <item quantity="one">Folder, %1$s, %2$d app</item>

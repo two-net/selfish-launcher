@@ -72,6 +72,12 @@ sealed interface Action {
      */
     data class LayerSettled(val layer: Layer) : Action
 
+    /**
+     * The text in the App Grid's search field is now [query] (FR-SRCH-01).
+     * Ignored anywhere but the App Grid.
+     */
+    data class Search(val query: String) : Action
+
     /** An App Grid item was dropped at position [to] (FR-GRID-05, FR-GRID-07). */
     data class MoveGridItem(val item: GridItem, val to: Int) : Action
 

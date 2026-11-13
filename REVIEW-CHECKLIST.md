@@ -40,6 +40,12 @@ issues add their items here. Every release PR signs off the whole list.
 - [ ] [FR-FOLD-07, FR-GEST-06, FR-ANIM-12] "Remove folder" shows the banner over the grid and fades the folder. Tapping the banner fades it back. Pressing Home and waiting 5 s still returns its apps to the grid.
 - [ ] [FR-FOLD-04] Renaming with the on-screen keyboard: Done keeps the new name; Back hides the keyboard first, and the next Back closes the folder and keeps what was typed.
 
+## Search (SRS §4.5)
+
+- [ ] [FR-SRCH-01, FR-SRCH-03, FR-SRCH-05] On a device, with the system keyboard: tapping the search field opens the keyboard; Go launches the first result, and Back from that app returns to the results without the keyboard; Back with the keyboard open hides it first, and the next Back closes the grid; closing the grid with Back, Home or a swipe down clears the query and the keyboard.
+- [ ] [FR-SRCH-06] Nothing in `domain/search` or `ui/search` uses a port, the network or a web-search intent, and the field turns autocorrection off.
+- [ ] [NFR-A11Y-01] With TalkBack, the empty search field is announced as "Search apps", and "No apps found" is announced when it appears.
+
 ## User interface (SRS §5.1)
 
 - [ ] [UI-01] Every surface floats over the wallpaper on the `glass`, `scrim` or `dim` tokens; no surface has an opaque full-screen background. Checked in both appearances over a bright and a dark wallpaper.
