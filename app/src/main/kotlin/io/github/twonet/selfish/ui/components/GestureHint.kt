@@ -23,7 +23,8 @@ import kotlinx.coroutines.delay
 
 /**
  * A glowing touch point that traces a gesture (FR-ANIM-13), for the
- * tutorial (#19) and for hints in context, such as empty Home's "Swipe up".
+ * tutorial (FR-ONB-02) and for hints in context, such as empty Home's
+ * "Swipe up".
  * It moves from [from] to [to], each a fraction of its own width and
  * height, as a finger would.
  *

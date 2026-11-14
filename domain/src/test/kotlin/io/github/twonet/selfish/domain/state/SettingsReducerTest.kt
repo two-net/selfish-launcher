@@ -166,6 +166,87 @@ class SettingsReducerTest {
         assertFalse(granted.settings.notificationsInEvents)
     }
 
+    // The access explanation (FR-ONB-04, FR-SET-12)
+
+    private val notifications = AccessFeature.NotificationsInEvents
+    private val explanation = Overlay.AccessExplanation(notifications)
+
+    @Test
+    @Verifies("FR-SET-12", "FR-ONB-04")
+    fun `the switch without access explains first and asks nothing, and with access turns on at once`() {
+        val explained = reduce(settings.copy(notificationAccess = false), Action.TurnOnFeature(notifications))
+        assertEquals(listOf<Overlay>(explanation), explained.state.overlays)
+        assertEquals(emptyList(), explained.effects)
+        assertFalse(explained.state.awaitingNotificationAccess)
+        assertFalse(explained.state.settings.notificationsInEvents)
+        assertSame(explained.state, reduce(explained.state, Action.TurnOnFeature(notifications)).state)
+
+        val unchecked = reduce(settings, Action.TurnOnFeature(notifications)).state
+        assertEquals(listOf<Overlay>(explanation), unchecked.overlays, "Access not checked yet counts as missing")
+
+        val granted = reduce(settings.copy(notificationAccess = true), Action.TurnOnFeature(notifications))
+        assertTrue(granted.state.notificationsOn)
+        assertEquals(emptyList(), granted.state.overlays)
+        assertEquals(emptyList(), granted.effects)
+    }
+
+    @Test
+    @Verifies("FR-SET-12", "FR-ONB-04")
+    fun `Continue closes the explanation and asks for access once, and access granted turns the feature on`() {
+        val explained = reduce(settings.copy(notificationAccess = false), Action.TurnOnFeature(notifications)).state
+
+        val asked = reduce(explained, Action.RequestAccess(notifications))
+        assertEquals(settings.overlays, asked.state.overlays)
+        assertTrue(asked.state.awaitingNotificationAccess)
+        assertEquals(listOf<Effect>(Effect.RequestNotificationAccess), asked.effects)
+
+        val again = reduce(asked.state, Action.RequestAccess(notifications))
+        assertSame(asked.state, again.state, "A second tap as it closes asks nothing more")
+        assertEquals(emptyList(), again.effects)
+
+        val granted = reduce(asked.state, Action.NotificationAccessChanged(granted = true)).state
+        assertTrue(granted.notificationsOn)
+    }
+
+    @Test
+    @Verifies("FR-SET-12", "FR-ONB-04", "FR-GEN-03", "FR-GEN-04")
+    fun `Not now and Back close the explanation and leave the feature off, and Home closes Settings too`() {
+        val explained = reduce(settings.copy(notificationAccess = false), Action.TurnOnFeature(notifications)).state
+
+        val back = reduce(explained, Action.Back).state
+        assertEquals(Layer.Settings, back.layer)
+        assertEquals(emptyList(), back.overlays)
+        assertFalse(back.settings.notificationsInEvents)
+        assertFalse(back.awaitingNotificationAccess)
+
+        val home = reduce(explained, Action.HomePressed).state
+        assertEquals(Layer.Home, home.layer)
+        assertEquals(emptyList(), home.overlays)
+    }
+
+    @Test
+    @Verifies("FR-ONB-04")
+    fun `the explanation opens only over Settings, and About doesn't open over it`() {
+        val events = home.copy(layer = Layer.Events, notificationAccess = false)
+        assertSame(events, reduce(events, Action.TurnOnFeature(notifications)).state)
+        assertSame(about, reduce(about, Action.TurnOnFeature(notifications)).state)
+
+        val explained = reduce(settings.copy(notificationAccess = false), Action.TurnOnFeature(notifications)).state
+        assertSame(explained, reduce(explained, Action.OpenAbout).state)
+        assertSame(settings, reduce(settings, Action.RequestAccess(notifications)).state, "Continue without its explanation")
+    }
+
+    @Test
+    @Verifies("FR-EVT-07", "FR-ONB-04")
+    fun `the Events card explains the feature itself, so its Turn on asks at once`() {
+        val events = home.copy(layer = Layer.Events, notificationAccess = false)
+
+        val asked = reduce(events, Action.TurnOnNotifications)
+
+        assertEquals(emptyList(), asked.state.overlays)
+        assertEquals(listOf<Effect>(Effect.RequestNotificationAccess), asked.effects)
+    }
+
     // Sort A–Z (FR-SET-10, FR-GEST-06)
 
     private val sortedGrid = listOf(

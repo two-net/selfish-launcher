@@ -17,12 +17,16 @@ import io.github.twonet.selfish.domain.model.Settings
 internal fun openSettings(state: LauncherState): Next =
     if (state.layer == Layer.Settings) Next(state) else Next(state.copy(layer = Layer.Settings, overlays = emptyList()))
 
-/** Opens About over Settings, so Back returns to Settings first (FR-SET-17, FR-GEN-04). */
+/**
+ * Opens About over Settings, so Back returns to Settings first (FR-SET-17,
+ * FR-GEN-04). Only over Settings itself: not over About again, nor over an
+ * access explanation.
+ */
 internal fun openAbout(state: LauncherState): Next =
-    if (state.layer != Layer.Settings || state.overlays.lastOrNull() == Overlay.About) {
+    if (state.layer != Layer.Settings || state.overlays.isNotEmpty()) {
         Next(state)
     } else {
-        Next(state.copy(overlays = state.overlays + Overlay.About))
+        Next(state.copy(overlays = listOf(Overlay.About)))
     }
 
 /** "Time and date on Home" (FR-SET-07, FR-HOME-02). */
@@ -49,6 +53,50 @@ internal fun turnOffNotifications(state: LauncherState): Next =
     } else {
         Next(state.copy(settings = state.settings.copy(notificationsInEvents = false), awaitingNotificationAccess = false))
     }
+
+/**
+ * Turns "Notifications in Events" on (FR-SET-12): at once with access
+ * granted; without it, the setting waits for it, so it is never on while
+ * access is known to be missing, and the system's access screen opens
+ * (FR-EVT-07, FR-ONB-04). The Events card and the explanation's "Continue"
+ * both lead here, each after explaining the access it needs.
+ */
+internal fun turnOnNotifications(state: LauncherState): Next = when {
+    state.notificationsOn -> Next(state)
+    state.notificationAccess == true -> Next(state.copy(settings = state.settings.copy(notificationsInEvents = true)))
+    else -> Next(state.copy(awaitingNotificationAccess = true), listOf(Effect.RequestNotificationAccess))
+}
+
+/**
+ * A feature's switch in Settings turned on (FR-SET-12, FR-ONB-04). With its
+ * access granted, it turns on at once. Without, the one-screen explanation
+ * opens over Settings, and nothing is asked until its "Continue". The
+ * switches are on Settings itself, which draws the explanation, so anywhere
+ * else, About and the explanation included, this changes nothing.
+ */
+internal fun turnOnFeature(state: LauncherState, feature: AccessFeature): Next {
+    if (state.layer != Layer.Settings || state.overlays.isNotEmpty()) return Next(state)
+    return when (feature) {
+        AccessFeature.NotificationsInEvents -> when {
+            state.notificationsOn -> Next(state)
+            state.notificationAccess == true -> turnOnNotifications(state)
+            else -> Next(state.copy(overlays = listOf(Overlay.AccessExplanation(feature))))
+        }
+    }
+}
+
+/**
+ * "Continue" on the explanation of [feature] (FR-ONB-04): it closes, and
+ * access is asked for. Only while that explanation is on top, so a second
+ * tap as it closes asks nothing more.
+ */
+internal fun requestAccess(state: LauncherState, feature: AccessFeature): Next {
+    if (state.overlays.lastOrNull() != Overlay.AccessExplanation(feature)) return Next(state)
+    val closed = state.copy(overlays = state.overlays.dropLast(1))
+    return when (feature) {
+        AccessFeature.NotificationsInEvents -> turnOnNotifications(closed)
+    }
+}
 
 /**
  * Runs "Reset layout" once its remorse timer is over (FR-SET-16). The

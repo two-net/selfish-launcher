@@ -29,6 +29,7 @@ import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Settings
 import io.github.twonet.selfish.domain.model.WallpaperStatus
 import io.github.twonet.selfish.domain.ports.WallpaperId
+import io.github.twonet.selfish.domain.state.AccessFeature
 import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.Layer
 import io.github.twonet.selfish.domain.state.LauncherState
@@ -39,6 +40,8 @@ import io.github.twonet.selfish.ui.events.EventsTags
 import io.github.twonet.selfish.ui.folder.FolderTags
 import io.github.twonet.selfish.ui.grid.AppGridTags
 import io.github.twonet.selfish.ui.home.HomeTags
+import io.github.twonet.selfish.ui.onboarding.AccessTags
+import io.github.twonet.selfish.ui.onboarding.TutorialTags
 import io.github.twonet.selfish.ui.settings.SettingsTags
 import io.github.twonet.selfish.ui.tokens.DarkColors
 import io.github.twonet.selfish.ui.tokens.LauncherColors
@@ -121,10 +124,10 @@ class AppearanceTest {
     }
 
     /**
-     * Visits every surface built so far and checks that it is drawn in
-     * [appearance]: Home, the App Grid, a context menu, a folder, the
-     * remorse banner, Events, the Top Menu, Wallpaper details, Settings and
-     * About (FR-THM-07). The tutorial (#19) will use the same tokens.
+     * Visits every surface and checks that it is drawn in [appearance]:
+     * Home, the App Grid, a context menu, a folder, the remorse banner,
+     * Events, the Top Menu, Wallpaper details, Settings, About, the access
+     * explanation and the tutorial (FR-THM-07).
      */
     private fun everySurfaceIs(appearance: Appearance, state: LauncherState) {
         val colors = if (appearance == Appearance.Dark) DarkColors else LightColors
@@ -168,6 +171,13 @@ class AppearanceTest {
 
         go(Action.OpenAbout)
         assertTextIn(colors, string(R.string.about_not_affiliated), SettingsTags.ABOUT, "About")
+
+        go(Action.Back)
+        go(Action.TurnOnFeature(AccessFeature.NotificationsInEvents))
+        assertTextIn(colors, string(R.string.access_notifications_body), AccessTags.PAGE, "Access explanation")
+
+        go(Action.ReplayTutorial)
+        assertTextIn(colors, string(R.string.tutorial_step_apps), TutorialTags.CARD, "Tutorial")
     }
 
     @Test

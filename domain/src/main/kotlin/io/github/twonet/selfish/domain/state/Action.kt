@@ -161,7 +161,8 @@ sealed interface Action {
 
     /**
      * "Turn on" in the Events card (FR-EVT-07). Without access, it asks for
-     * it first (FR-ONB-04).
+     * it at once: the card itself explains the feature and the access it
+     * needs (FR-ONB-04). Settings' switch goes through [TurnOnFeature].
      */
     data object TurnOnNotifications : Action
 
@@ -266,9 +267,25 @@ sealed interface Action {
 
     /**
      * "Notifications in Events" turned off in Settings (FR-SET-12). Turning
-     * it on is [TurnOnNotifications], which asks for access first.
+     * it on is [TurnOnFeature], which explains the access it needs first.
      */
     data object TurnOffNotifications : Action
+
+    /**
+     * A switch in Settings turned [feature] on (FR-SET-12). With its access
+     * granted it turns on at once; without, Settings first shows the
+     * one-screen explanation ([Overlay.AccessExplanation]), and nothing is
+     * asked yet (FR-ONB-04). Ignored anywhere but Settings.
+     */
+    data class TurnOnFeature(val feature: AccessFeature) : Action
+
+    /**
+     * "Continue" on the explanation of [feature]: it closes, and the system's
+     * access screen opens; the feature turns on once access is granted
+     * (FR-ONB-04). Ignored unless that explanation is on top. "Not now" is
+     * [Back].
+     */
+    data class RequestAccess(val feature: AccessFeature) : Action
 
     /** "Sort App Grid A–Z", which runs once its remorse timer runs out (FR-SET-10, FR-GEST-06). */
     data object SortAppGrid : Action
@@ -279,4 +296,13 @@ sealed interface Action {
      * are kept (FR-SET-16, FR-GEST-06).
      */
     data object ResetLayout : Action
+
+    /** "Skip" on the tutorial, which ends it wherever it is (FR-ONB-02). */
+    data object SkipTutorial : Action
+
+    /**
+     * "Replay tutorial" in Settings (FR-ONB-03): Settings closes, and the
+     * tutorial starts again from its first step on Home.
+     */
+    data object ReplayTutorial : Action
 }

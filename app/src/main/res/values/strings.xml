@@ -96,6 +96,8 @@
     <string name="settings_title">Settings</string>
     <!-- Settings' pulley menu item, and the row at the end of the page, that open About (FR-SET-17). -->
     <string name="menu_about">About</string>
+    <!-- Settings' pulley menu item, and the row before About, that start the tutorial again (FR-ONB-03). -->
+    <string name="menu_replay_tutorial">Replay tutorial</string>
     <!-- The label above the highlight color choices: Automatic or one of 8 colors (FR-SET-06). -->
     <string name="settings_highlight">Highlight color</string>
     <!-- The highlight color taken from the wallpaper (FR-AMB-01, FR-SET-06). -->
@@ -190,6 +192,34 @@
     <string name="oss_androidx" translatable="false">AndroidX libraries</string>
     <string name="oss_listenablefuture" translatable="false">Guava ListenableFuture</string>
     <string name="oss_jspecify" translatable="false">JSpecify</string>
+
+    <!-- First run and tutorial (SRS §4.14) -->
+    <!-- The tutorial's first step, on Home: the gesture that opens the App Grid (FR-ONB-02, FR-GRID-01). -->
+    <string name="tutorial_step_apps">Swipe up to see your apps</string>
+    <!-- The tutorial's second step, on Home: the gesture that opens Events (FR-ONB-02, FR-EVT-01). -->
+    <string name="tutorial_step_events">Swipe left or right for Events, with today\'s wallpaper and your notifications</string>
+    <!-- The tutorial's third step, on Home: the gesture that opens the Top Menu (FR-ONB-02, FR-TOP-01). -->
+    <string name="tutorial_step_top_menu">Swipe down for the Top Menu, with the appearance, ambiences and settings</string>
+    <!-- On the App Grid, once the first step is done: how to go back to Home (FR-ONB-02, FR-GRID-04). -->
+    <string name="tutorial_back_apps">Swipe down, or press Back, to go back to Home</string>
+    <!-- On Events, once the second step is done: how to go back to Home (FR-ONB-02, FR-EVT-01). -->
+    <string name="tutorial_back_events">Swipe left or right to go back to Home</string>
+    <!-- On the Top Menu, once the last step is done: how to close it (FR-ONB-02, FR-TOP-05). -->
+    <string name="tutorial_back_top_menu">Swipe up to close the Top Menu</string>
+    <!-- Which step of the tutorial this is: %1$d is the step, %2$d the number of steps (FR-ONB-02). -->
+    <string name="tutorial_progress">%1$d of %2$d</string>
+    <!-- Ends the tutorial at once (FR-ONB-02). -->
+    <string name="tutorial_skip">Skip tutorial</string>
+    <!-- The explanation shown before asking for notification access, for Notifications in Events; its header is settings_notifications_in_events (FR-ONB-04, FR-EVT-04). -->
+    <string name="access_notifications_body">Events can list your notifications, grouped by app, so you can open or dismiss them there. For this, Selfish Launcher needs notification access, which you give it in the system\'s settings.</string>
+    <!-- What the launcher does with notifications, on the explanation (FR-ONB-04, NFR-PRIV-05). -->
+    <string name="access_notifications_privacy">Notifications are only shown: they are never saved or sent anywhere.</string>
+    <!-- How to undo it, on the explanation (FR-ONB-04). -->
+    <string name="access_notifications_revoke">You can turn this off at any time here. If you take the access back in the system\'s settings, it turns itself off.</string>
+    <!-- On an explanation: opens the system's screen that gives the launcher the access (FR-ONB-04). -->
+    <string name="access_continue">Continue</string>
+    <!-- On an explanation: closes it, and the feature stays off (FR-ONB-04). -->
+    <string name="access_not_now">Not now</string>
 
     <!-- Remorse timers (FR-GEST-06) -->
     <!-- The banner of a folder about to be removed. -->

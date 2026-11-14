@@ -67,8 +67,17 @@ data class LauncherState(
     val query: String = "",
     /** Whether the launcher is on screen: between its `onStart` and `onStop`. */
     val homeShown: Boolean = false,
-    /** Whether this process has already offered the default Home role (FR-GEN-02). */
-    val defaultHomeOffered: Boolean = false,
+    /**
+     * Whether this process has already welcomed a first run: offered the
+     * default Home role (FR-GEN-02) and started the tutorial (FR-ONB-02).
+     */
+    val welcomed: Boolean = false,
+    /**
+     * The tutorial in progress (FR-ONB-02), or `null`. Not saved: after the
+     * process is killed it doesn't resume, and Settings can replay it
+     * (FR-ONB-03).
+     */
+    val tutorial: Tutorial? = null,
     /**
      * Whether an app is launching. Further launches are ignored until the
      * launcher is hidden or [LAUNCH_TIMEOUT] passes (FR-GEN-05).
@@ -259,6 +268,19 @@ val LauncherState.notificationsOn: Boolean
  */
 val LauncherState.showsAccessCard: Boolean
     get() = !notificationsOn && !settings.notificationsCardDismissed
+
+/**
+ * The tutorial as it shows now, if it does (FR-ONB-02): on Home, the step to
+ * do next, and on the view the step just opened, how to go back. It waits,
+ * unseen, everywhere else: on other layers, on pages and under overlays.
+ */
+val LauncherState.tutorialShown: Tutorial?
+    get() {
+        val tutorial = tutorial ?: return null
+        if (overlays.isNotEmpty()) return null
+        val here = if (tutorial.reached) tutorial.step.target else Layer.Home
+        return tutorial.takeIf { layer == here }
+    }
 
 /**
  * Whether the Top Menu shows its Ambiences row: Daily Bing wallpaper is on

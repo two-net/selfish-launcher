@@ -42,6 +42,7 @@ import io.github.twonet.selfish.domain.model.HighlightSetting
 import io.github.twonet.selfish.domain.model.Market
 import io.github.twonet.selfish.domain.ports.ClockInfo
 import io.github.twonet.selfish.domain.ports.DefaultApps
+import io.github.twonet.selfish.domain.state.AccessFeature
 import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.Layer
 import io.github.twonet.selfish.domain.state.LauncherState
@@ -49,6 +50,7 @@ import io.github.twonet.selfish.domain.state.Overlay
 import io.github.twonet.selfish.domain.state.reducedMotion
 import io.github.twonet.selfish.domain.wallpaper.MarketResolver
 import io.github.twonet.selfish.ui.LauncherTags
+import io.github.twonet.selfish.ui.onboarding.AccessTags
 import io.github.twonet.selfish.ui.TestLauncher
 import io.github.twonet.selfish.ui.TestLauncher.Companion.app
 import io.github.twonet.selfish.ui.TestLauncher.Companion.launcher
@@ -172,9 +174,9 @@ class SettingsScreenTest {
     @Verifies("FR-SET-17", "FR-GEST-05", "FR-GEST-09")
     fun thePulleyMenuAndTheHeaderOfferAboutWhichBackLeavesForSettings() {
         show()
-        assertEquals(listOf(string(R.string.menu_about)), pulleyLabels())
+        assertEquals(listOf(string(R.string.menu_replay_tutorial), string(R.string.menu_about)), pulleyLabels())
 
-        launcher.pull(rule.onNodeWithTag(SettingsTags.PAGE), toItem = 0, items = 1)
+        launcher.pull(rule.onNodeWithTag(SettingsTags.PAGE), toItem = 1, items = 2)
         rule.mainClock.advanceTimeBy(SETTLE_MILLIS)
         rule.waitForIdle()
 
@@ -365,13 +367,22 @@ class SettingsScreenTest {
 
     @Test
     @Verifies("FR-SET-12", "FR-ONB-04")
-    fun notificationsInEventsAskForAccessFirstAndTurnOffAtOnce() {
+    fun notificationsInEventsExplainTheAccessThenAskForItAndTurnOffAtOnce() {
         show(settings().copy(notificationAccess = false))
         val notifications = control(R.string.settings_notifications_in_events) and hasRole(Role.Switch)
 
         tap(notifications)
-        assertTrue(Action.TurnOnNotifications in dispatched)
-        assertTrue(state.awaitingNotificationAccess, "Access is asked for first")
+        rule.mainClock.advanceTimeBy(SETTLE_MILLIS)
+        rule.onNodeWithTag(AccessTags.PAGE).assertIsDisplayed()
+        assertTrue(dispatched.none { it is Action.RequestAccess }, "Nothing is asked before the explanation")
+        assertTrue(!state.awaitingNotificationAccess)
+
+        rule.onNodeWithTag(AccessTags.CONTINUE).performClick()
+        rule.mainClock.advanceTimeBy(SETTLE_MILLIS)
+        rule.waitForIdle()
+        assertTrue(Action.RequestAccess(AccessFeature.NotificationsInEvents) in dispatched)
+        assertTrue(state.awaitingNotificationAccess, "Access is asked for")
+        rule.onNodeWithTag(AccessTags.PAGE).assertDoesNotExist()
         rule.onNode(notifications).assertIsOff()
 
         go(Action.NotificationAccessChanged(granted = true))
@@ -398,7 +409,7 @@ class SettingsScreenTest {
         // Back to the top, where the pulley menu is.
         rule.onNodeWithTag(SettingsTags.LIST).performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, -SCROLL_TO_TOP) }
         rule.waitForIdle()
-        launcher.pull(rule.onNodeWithTag(SettingsTags.PAGE), toItem = 0, items = 1)
+        launcher.pull(rule.onNodeWithTag(SettingsTags.PAGE), toItem = 1, items = 2)
         rule.mainClock.advanceTimeBy(SETTLE_MILLIS)
         rule.waitForIdle()
 
@@ -454,7 +465,8 @@ class SettingsScreenTest {
             R.string.appearance_system, R.string.appearance_light, R.string.appearance_dark, R.string.highlight_automatic,
             R.string.settings_daily_wallpaper, R.string.settings_lock_screen, R.string.download_any_network, R.string.download_wifi_only,
             R.string.settings_show_clock, R.string.settings_sort_az, R.string.settings_notifications_in_events,
-            R.string.haptics_off, R.string.animations_reduced, R.string.settings_reset_layout, R.string.menu_about,
+            R.string.haptics_off, R.string.animations_reduced, R.string.settings_reset_layout, R.string.menu_replay_tutorial,
+            R.string.menu_about,
         ).map(::control) + listOf(swatch(R.string.highlight_pink), hasTestTag(SettingsTags.MARKET))
         for (control in controls) rule.onNode(control).performScrollTo().assertIsDisplayed()
 

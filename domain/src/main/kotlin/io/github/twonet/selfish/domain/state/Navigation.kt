@@ -6,8 +6,9 @@ import io.github.twonet.selfish.domain.model.FolderId
 /**
  * The launcher surface the user is on (SRS §3.2, DESIGN §4.1). Home is at
  * the bottom; every other layer sits over it. Feature issues add the layers
- * they build, such as Settings pages and the tutorial; [reduce]'s Back and
- * Home rules don't depend on which layers exist.
+ * they build, such as Settings pages; [reduce]'s Back and Home rules don't
+ * depend on which layers exist. The tutorial isn't a layer: it waits over
+ * the real ones ([Tutorial]).
  */
 sealed interface Layer {
     data object Home : Layer
@@ -71,6 +72,25 @@ sealed interface Overlay {
      * returns to Settings before Home.
      */
     data object About : Overlay
+
+    /**
+     * The one-screen explanation of [feature] and the access it needs, open
+     * over [Layer.Settings] when the user turns the feature on without that
+     * access (FR-ONB-04). Its "Continue" asks for access; Back closes it and
+     * leaves the feature off.
+     */
+    data class AccessExplanation(val feature: AccessFeature) : Overlay
+}
+
+/**
+ * A feature that needs special access granted by the user in the system's
+ * settings, so it asks for it only when turned on, after a one-screen
+ * explanation (FR-ONB-04, NFR-PRIV-04). Notification dots (FR-GRID-11) and
+ * recently used covers (FR-HOME-10) join this list when they are built.
+ */
+enum class AccessFeature {
+    /** "Notifications in Events", which needs notification access (FR-SET-12, FR-EVT-04). */
+    NotificationsInEvents,
 }
 
 /**

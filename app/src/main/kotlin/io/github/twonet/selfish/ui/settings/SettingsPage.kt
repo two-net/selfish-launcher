@@ -51,6 +51,7 @@ import io.github.twonet.selfish.domain.model.Haptics
 import io.github.twonet.selfish.domain.model.HighlightSetting
 import io.github.twonet.selfish.domain.model.Market
 import io.github.twonet.selfish.domain.model.Settings
+import io.github.twonet.selfish.domain.state.AccessFeature
 import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.LauncherState
 import io.github.twonet.selfish.domain.state.Overlay
@@ -73,6 +74,7 @@ import io.github.twonet.selfish.ui.components.pressable
 import io.github.twonet.selfish.ui.components.pulleyActions
 import io.github.twonet.selfish.ui.components.selectedOutline
 import io.github.twonet.selfish.ui.components.takeEveryTouch
+import io.github.twonet.selfish.ui.onboarding.AccessExplanation
 import io.github.twonet.selfish.ui.tokens.Emphasis
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
 import io.github.twonet.selfish.ui.tokens.Shapes
@@ -88,15 +90,16 @@ import java.text.Collator
  * The launcher's Settings page (SRS §4.13): every setting, rendered from
  * [state]; each change goes back as an action and takes effect at once,
  * with no Save button. Its header, "Settings", is right-aligned in the
- * highlight color (UI-02), and its pulley menu offers "About" (FR-GEST-05),
- * also as an action on the header (FR-GEST-09). "Replay tutorial" joins it
- * with the tutorial (#19).
+ * highlight color (UI-02), and its pulley menu offers "Replay tutorial"
+ * (FR-ONB-03) and "About" (FR-GEST-05), also as actions on the header
+ * (FR-GEST-09).
  *
  * Like Wallpaper details, it covers the whole screen over the dimmed
  * wallpaper and takes every touch, so nothing beneath can be pressed; Back
- * and Home close it (FR-GEN-03, FR-GEN-04). About opens over it in the same
- * frame, crossfading, so the dim isn't drawn twice and the page keeps its
- * scroll position for Back.
+ * and Home close it (FR-GEN-03, FR-GEN-04). About, and the explanation a
+ * switch shows before asking for special access (FR-ONB-04), open over it in
+ * the same frame, crossfading, so the dim isn't drawn twice and the page
+ * keeps its scroll position for Back.
  *
  * "Covers show" (FR-SET-08), "Swipe down on Home opens" (FR-SET-11) and
  * "Notification dots" (FR-SET-13) are left out until the features they
@@ -107,23 +110,43 @@ internal fun SettingsPage(state: LauncherState, dispatch: (Action) -> Unit, modi
     val dim = LauncherTheme.colors.dim
     val motion = LauncherTheme.motion
     val scroll = rememberScrollState()
-    val aboutOpen = Overlay.About in state.overlays
+    val top = state.overlays.lastOrNull()
+    // The feature explained, kept while its explanation fades out.
+    val kept = remember { KeptFeature() }
+    val explained = ((top as? Overlay.AccessExplanation)?.feature ?: kept.value).also { kept.value = it }
     Box(modifier.fillMaxSize().drawBehind { drawRect(dim) }.testTag(SettingsTags.PAGE)) {
         // Beneath the page, so a touch anywhere it doesn't use goes no further.
         Box(Modifier.fillMaxSize().takeEveryTouch())
-        AnimatedVisibility(visible = !aboutOpen, enter = fadeIn(motion.fadeIn()), exit = fadeOut(motion.fadeOut())) {
+        AnimatedVisibility(visible = top == null, enter = fadeIn(motion.fadeIn()), exit = fadeOut(motion.fadeOut())) {
             SettingsList(state, dispatch, scroll)
         }
-        AnimatedVisibility(visible = aboutOpen, enter = fadeIn(motion.fadeIn()), exit = fadeOut(motion.fadeOut())) {
+        AnimatedVisibility(visible = top == Overlay.About, enter = fadeIn(motion.fadeIn()), exit = fadeOut(motion.fadeOut())) {
             About(state)
         }
+        AnimatedVisibility(visible = top is Overlay.AccessExplanation, enter = fadeIn(motion.fadeIn()), exit = fadeOut(motion.fadeOut())) {
+            explained?.let { feature ->
+                AccessExplanation(
+                    feature = feature,
+                    onContinue = { dispatch(Action.RequestAccess(feature)) },
+                    onNotNow = { dispatch(Action.Back) },
+                )
+            }
+        }
     }
+}
+
+/** The last feature explained, kept across compositions. Not state: whatever changes it already recomposes. */
+private class KeptFeature {
+    var value: AccessFeature? = null
 }
 
 @Composable
 private fun SettingsList(state: LauncherState, dispatch: (Action) -> Unit, scroll: ScrollState) {
     val settings = state.settings
-    val pulley = listOf(PulleyItem(stringResource(R.string.menu_about)) { dispatch(Action.OpenAbout) })
+    val pulley = listOf(
+        PulleyItem(stringResource(R.string.menu_replay_tutorial)) { dispatch(Action.ReplayTutorial) },
+        PulleyItem(stringResource(R.string.menu_about)) { dispatch(Action.OpenAbout) },
+    )
     PulleyMenu(items = pulley, atTop = { !scroll.canScrollBackward }, modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -162,11 +185,14 @@ private fun SettingsList(state: LauncherState, dispatch: (Action) -> Unit, scrol
                 ) { dispatch(Action.SortAppGrid) }
             }
             Section(stringResource(R.string.settings_events)) {
-                // FR-SET-12: turning it on asks for notification access first, if needed (FR-ONB-04).
+                // FR-SET-12: turning it on without notification access
+                // explains it first, and asks only on "Continue" (FR-ONB-04).
                 SwitchRow(
                     label = stringResource(R.string.settings_notifications_in_events),
                     checked = state.notificationsOn,
-                    onCheckedChange = { dispatch(if (it) Action.TurnOnNotifications else Action.TurnOffNotifications) },
+                    onCheckedChange = {
+                        dispatch(if (it) Action.TurnOnFeature(AccessFeature.NotificationsInEvents) else Action.TurnOffNotifications)
+                    },
                     description = stringResource(R.string.settings_notifications_in_events_description),
                 )
             }
@@ -196,8 +222,11 @@ private fun SettingsList(state: LauncherState, dispatch: (Action) -> Unit, scrol
                     description = stringResource(R.string.settings_reset_layout_description),
                 ) { dispatch(Action.ResetLayout) }
             }
-            // FR-SET-17, also in the pulley menu.
-            ActionRow(stringResource(R.string.menu_about), Modifier.testTag(SettingsTags.ABOUT_ROW)) { dispatch(Action.OpenAbout) }
+            // FR-ONB-03 and FR-SET-17, also in the pulley menu.
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.Small)) {
+                ActionRow(stringResource(R.string.menu_replay_tutorial), Modifier.testTag(SettingsTags.REPLAY_ROW)) { dispatch(Action.ReplayTutorial) }
+                ActionRow(stringResource(R.string.menu_about), Modifier.testTag(SettingsTags.ABOUT_ROW)) { dispatch(Action.OpenAbout) }
+            }
         }
     }
 }
@@ -399,6 +428,7 @@ internal object SettingsTags {
     const val HIGHLIGHTS = "settings-highlights"
     const val MARKET = "settings-market"
     const val MARKET_LIST = "settings-market-list"
+    const val REPLAY_ROW = "settings-replay-tutorial"
     const val ABOUT_ROW = "settings-about"
     const val ABOUT = "about"
     const val ABOUT_HEADER = "about-header"

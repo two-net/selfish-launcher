@@ -61,12 +61,13 @@ private fun keepRules(state: LauncherState): LauncherState {
     // Wallpaper details has nothing to show without a wallpaper, for example
     // once Daily Bing wallpaper is turned off (FR-WP-13).
     if (next.layer == Layer.WallpaperDetails && next.wallpaper == null) next = next.copy(layer = Layer.Home)
-    return next
+    // Last, so it sees where every rule above left the layer (FR-ONB-02).
+    return keepTutorial(next)
 }
 
 private fun transition(state: LauncherState, action: Action): Next = when (action) {
     is Action.Restored ->
-        offerDefaultHome(
+        welcome(
             state.copy(layout = action.layout, settings = action.settings, restored = true, firstRun = action.layout == null),
         ).then { restoreWallpapers(it, action.wallpapers) }
 
@@ -139,7 +140,7 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
     // It also asks the system which wallpaper it shows, since the user may
     // have set one elsewhere meanwhile (FR-AMB-03).
     Action.HomeShown ->
-        offerDefaultHome(state.copy(homeShown = true))
+        welcome(state.copy(homeShown = true))
             .then { startCheck(it, CheckTrigger.HomeShown) }
             .then(::readSystemWallpaper)
 
@@ -282,14 +283,9 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
             Next(state.copy(notificationAccess = action.granted))
         }
 
-    // Without access, the setting waits for it, so it is never on while
-    // access is known to be missing (FR-ONB-04).
-    Action.TurnOnNotifications ->
-        when {
-            state.notificationsOn -> Next(state)
-            state.notificationAccess == true -> Next(state.copy(settings = state.settings.copy(notificationsInEvents = true)))
-            else -> Next(state.copy(awaitingNotificationAccess = true), listOf(Effect.RequestNotificationAccess))
-        }
+    // The Events card explains the feature itself, so it asks at once
+    // (FR-EVT-07, FR-ONB-04).
+    Action.TurnOnNotifications -> turnOnNotifications(state)
 
     Action.HideNotificationsCard ->
         if (state.settings.notificationsCardDismissed) {
@@ -424,6 +420,14 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
     Action.SortAppGrid -> startLayoutRemorse(state, Destructive.SortAppGrid)
 
     Action.ResetLayout -> startLayoutRemorse(state, Destructive.ResetLayout)
+
+    is Action.TurnOnFeature -> turnOnFeature(state, action.feature)
+
+    is Action.RequestAccess -> requestAccess(state, action.feature)
+
+    Action.SkipTutorial -> skipTutorial(state)
+
+    Action.ReplayTutorial -> replayTutorial(state)
 }
 
 /**
@@ -519,14 +523,15 @@ private fun LauncherState.withLayout(layout: Layout): LauncherState =
     if (layout == this.layout) this else pruneOverlays(copy(layout = layout))
 
 /**
- * On a first run, offers once per process to become the default Home app
- * (FR-GEN-02). It waits until the launcher is on screen, because the prompt
- * needs a visible Activity and the process may have started for the
- * background job instead.
+ * On a first run, once per process, offers to become the default Home app
+ * (FR-GEN-02, FR-ONB-01) and starts the tutorial (FR-ONB-02). It waits until
+ * the state is restored and the launcher is on screen, whichever comes last:
+ * the prompt needs a visible Activity, and the process may have started for
+ * the background job instead.
  */
-private fun offerDefaultHome(state: LauncherState): Next =
-    if (state.restored && state.homeShown && state.firstRun && !state.defaultHomeOffered) {
-        Next(state.copy(defaultHomeOffered = true), listOf(Effect.OfferDefaultHome))
+private fun welcome(state: LauncherState): Next =
+    if (state.restored && state.homeShown && state.firstRun && !state.welcomed) {
+        Next(startTutorial(state.copy(welcomed = true)), listOf(Effect.OfferDefaultHome))
     } else {
         Next(state)
     }

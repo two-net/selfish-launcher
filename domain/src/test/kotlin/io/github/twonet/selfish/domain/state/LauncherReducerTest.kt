@@ -253,7 +253,7 @@ class LauncherReducerTest {
         val shown = reduce(restored.state, Action.HomeShown)
 
         assertEquals(1, offers(shown))
-        assertTrue(shown.state.defaultHomeOffered)
+        assertTrue(shown.state.welcomed)
     }
 
     @Test

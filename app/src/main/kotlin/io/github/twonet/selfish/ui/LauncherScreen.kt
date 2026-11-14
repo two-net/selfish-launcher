@@ -5,7 +5,9 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -58,6 +60,7 @@ import io.github.twonet.selfish.domain.state.LauncherState
 import io.github.twonet.selfish.domain.state.appearance
 import io.github.twonet.selfish.domain.state.isPage
 import io.github.twonet.selfish.domain.state.openFolder
+import io.github.twonet.selfish.domain.state.tutorialShown
 import io.github.twonet.selfish.ui.components.LauncherHaptics
 import io.github.twonet.selfish.ui.components.RemorseBanner
 import io.github.twonet.selfish.ui.components.onUnhandledTap
@@ -69,6 +72,7 @@ import io.github.twonet.selfish.ui.motion.LayerGestureController
 import io.github.twonet.selfish.ui.motion.Scrolls
 import io.github.twonet.selfish.ui.motion.WindowBlur
 import io.github.twonet.selfish.ui.motion.layerGestures
+import io.github.twonet.selfish.ui.onboarding.TutorialHint
 import io.github.twonet.selfish.ui.settings.SettingsPage
 import io.github.twonet.selfish.ui.tokens.LauncherMotion
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
@@ -85,7 +89,8 @@ import kotlinx.coroutines.launch
  * Every launcher surface, rendered from [state]; every touch goes back as an
  * action (AR-02). Drawn back to front over the system wallpaper (DESIGN
  * §6.2): the dim and blur, Home, Events, the App Grid with its folders, the
- * Top Menu, then the remorse banner, over everything (FR-GEST-06).
+ * Top Menu, then the tutorial and the remorse banner, over everything
+ * (FR-ONB-02, FR-GEST-06).
  *
  * Swiping up on Home slides the App Grid up over a wallpaper that dims (and,
  * where supported, blurs) in proportion, while Home moves up out of the
@@ -343,26 +348,35 @@ fun LauncherScreen(
                     SettingsPage(state, dispatch)
                 }
             }
-            val remorse = state.remorse
-            if (remorse != null) {
-                val label = when (remorse.action) {
-                    is Destructive.RemoveFolder -> stringResource(R.string.remorse_remove_folder)
-                    is Destructive.ClearNotifications -> stringResource(R.string.remorse_clear_notifications)
-                    Destructive.SortAppGrid -> stringResource(R.string.remorse_sort_az)
-                    Destructive.ResetLayout -> stringResource(R.string.remorse_reset_layout)
+            // Over every view, at the bottom: the tutorial, then beneath it
+            // the remorse banner, so neither covers the other (DESIGN §6.2).
+            // After the views, so neither the Top Menu's catch layer nor a
+            // page's takes their taps; swipes on them still reach the root.
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(Spacing.Gutter),
+                verticalArrangement = Arrangement.spacedBy(Spacing.Small),
+            ) {
+                TutorialHint(state.tutorialShown, onSkip = { dispatch(Action.SkipTutorial) })
+                val remorse = state.remorse
+                if (remorse != null) {
+                    val label = when (remorse.action) {
+                        is Destructive.RemoveFolder -> stringResource(R.string.remorse_remove_folder)
+                        is Destructive.ClearNotifications -> stringResource(R.string.remorse_clear_notifications)
+                        Destructive.SortAppGrid -> stringResource(R.string.remorse_sort_az)
+                        Destructive.ResetLayout -> stringResource(R.string.remorse_reset_layout)
+                    }
+                    RemorseBanner(
+                        label = label,
+                        cancelLabel = stringResource(R.string.remorse_cancel, label),
+                        number = remorse.number,
+                        duration = REMORSE_DELAY,
+                        onCancel = { dispatch(Action.CancelRemorse) },
+                        modifier = Modifier.testTag(LauncherTags.REMORSE),
+                    )
                 }
-                RemorseBanner(
-                    label = label,
-                    cancelLabel = stringResource(R.string.remorse_cancel, label),
-                    number = remorse.number,
-                    duration = REMORSE_DELAY,
-                    onCancel = { dispatch(Action.CancelRemorse) },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .windowInsetsPadding(WindowInsets.safeDrawing)
-                        .padding(Spacing.Gutter)
-                        .testTag(LauncherTags.REMORSE),
-                )
             }
         }
     }

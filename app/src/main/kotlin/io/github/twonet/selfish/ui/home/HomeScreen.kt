@@ -111,8 +111,9 @@ fun HomeScreen(
                 // A first run, still looking up the default apps.
                 layout == null -> Unit
                 // Keyed on the layout, not on the covers the catalog has
-                // reported, so the hint never flashes while it loads.
-                layout.home.isEmpty() -> EmptyHint(Modifier.align(Alignment.Center))
+                // reported, so the hint never flashes while it loads. The
+                // tutorial says the same, with its own hint (FR-ONB-02).
+                layout.home.isEmpty() -> if (state.tutorial == null) EmptyHint(Modifier.align(Alignment.Center))
                 else -> Covers(state.covers, menu, dispatch, coversState)
             }
         }

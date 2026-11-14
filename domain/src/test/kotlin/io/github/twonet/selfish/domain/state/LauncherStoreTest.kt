@@ -2,9 +2,11 @@ package io.github.twonet.selfish.domain.state
 
 import io.github.twonet.selfish.domain.Verifies
 import io.github.twonet.selfish.domain.fakes.FakeAppCatalog
+import io.github.twonet.selfish.domain.fakes.FakeBingFeed
 import io.github.twonet.selfish.domain.fakes.FakeLocalStorage
 import io.github.twonet.selfish.domain.fakes.FakeNotificationSource
 import io.github.twonet.selfish.domain.fakes.FakeOsSettings
+import io.github.twonet.selfish.domain.fakes.FakeSystemWallpaper
 import io.github.twonet.selfish.domain.fakes.FakeWallpaperScheduler
 import io.github.twonet.selfish.domain.fakes.fakePorts
 import io.github.twonet.selfish.domain.model.Animations
@@ -25,7 +27,9 @@ import io.github.twonet.selfish.domain.ports.AppIconImage
 import io.github.twonet.selfish.domain.ports.ClockInfo
 import io.github.twonet.selfish.domain.ports.DefaultApps
 import io.github.twonet.selfish.domain.ports.DocName
+import io.github.twonet.selfish.domain.ports.FeedEntry
 import io.github.twonet.selfish.domain.ports.ImageId
+import io.github.twonet.selfish.domain.ports.ImageVariant
 import io.github.twonet.selfish.domain.ports.LocalStorage
 import io.github.twonet.selfish.domain.ports.NotificationItem
 import io.github.twonet.selfish.domain.ports.NotificationSource
@@ -400,6 +404,46 @@ class LauncherStoreTest {
     }
 
     @Test
+    @Verifies("FR-ONB-01", "FR-ONB-02", "FR-GEN-02", "FR-GRID-05", "FR-HOME-07", "FR-WP-01")
+    fun `a first run offers the Home role, lays out the apps, starts the wallpaper download and the tutorial`() = runTest {
+        val feed = FakeBingFeed()
+        val today = FeedEntry(startDate = "20261113", urlBase = "/th?id=OHR.Today", market = "en-US", hash = "htoday", title = "Today")
+        feed.feed = Result.success(listOf(today))
+        feed.images[today.urlBase to ImageVariant.Portrait] = FakeSystemWallpaper.image("today", 1080, 1920)
+        os.defaultHome = false
+        catalog.installed.value = listOf(maps, clock)
+        catalog.defaults = DefaultApps(phone = clock.id)
+        val store = startedStore(fakePorts(appCatalog = catalog, localStorage = storage, bingFeed = feed, wallpaperScheduler = scheduler, osSettings = os))
+
+        store.dispatch(Action.HomeShown)
+        runCurrent()
+
+        val state = store.state.value
+        assertEquals(1, os.defaultHomeRequests, "The system's prompt to become the default Home app")
+        assertEquals(Layout(grid = listOf(GridItem.App(clock.id), GridItem.App(maps.id)), home = listOf(clock.id)), state.layout, "Alphabetical, with the default apps on Home")
+        assertTrue(scheduler.periodic, "The background check is scheduled")
+        assertEquals(listOf(8), feed.feedRequests.map { it.second }, "The cache is filled")
+        assertEquals(setOf(ImageId("htoday")), storage.images.keys)
+        assertEquals(Tutorial(TutorialStep.Apps), state.tutorial)
+    }
+
+    @Test
+    @Verifies("FR-ONB-02")
+    fun `the tutorial isn't saved, so a new process doesn't resume it`() = runTest {
+        val first = startedStore()
+        first.dispatch(Action.HomeShown)
+        runCurrent()
+        assertEquals(Tutorial(TutorialStep.Apps), first.state.value.tutorial)
+
+        val next = startedStore()
+        next.dispatch(Action.HomeShown)
+        runCurrent()
+
+        assertEquals(firstRunLayout, next.state.value.layout)
+        assertNull(next.state.value.tutorial)
+    }
+
+    @Test
     @Verifies("FR-HOME-07")
     fun `a first run still gets a layout when the default apps can't be looked up`() = runTest {
         val failing = object : AppCatalog by catalog {
@@ -600,6 +644,25 @@ class LauncherStoreTest {
 
         assertTrue(store.state.value.notificationsOn)
         assertEquals(true, SettingsDoc.decode(storage.docs[DocName.Settings]).notificationsInEvents)
+    }
+
+    @Test
+    @Verifies("FR-SET-12", "FR-ONB-04")
+    fun `the Settings switch explains first, and asks for access only on Continue`() = runTest {
+        notes.granted.value = false
+        save(savedLayout, savedSettings)
+        val store = startedStore(withNotifications)
+        store.dispatch(Action.HomeShown)
+        store.dispatch(Action.OpenSettings)
+        runCurrent()
+
+        store.dispatch(Action.TurnOnFeature(AccessFeature.NotificationsInEvents))
+        runCurrent()
+        assertEquals(0, notes.accessRequests)
+
+        store.dispatch(Action.RequestAccess(AccessFeature.NotificationsInEvents))
+        runCurrent()
+        assertEquals(1, notes.accessRequests)
     }
 
     @Test
