@@ -7,6 +7,8 @@ import io.github.twonet.selfish.domain.fakes.FakeNotificationSource
 import io.github.twonet.selfish.domain.fakes.FakeOsSettings
 import io.github.twonet.selfish.domain.fakes.FakeWallpaperScheduler
 import io.github.twonet.selfish.domain.fakes.fakePorts
+import io.github.twonet.selfish.domain.model.Animations
+import io.github.twonet.selfish.domain.model.Haptics
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.AppId
 import io.github.twonet.selfish.domain.model.Appearance
@@ -80,9 +82,8 @@ class LauncherStoreTest {
     }
 
     /**
-     * Replaces the layout and settings at once. Only the appearance has an
-     * action of its own so far (#11; the rest arrive with #18), so tests
-     * dispatch another [Action.Restored]; savers can't tell the difference.
+     * Replaces the layout and settings at once, by dispatching another
+     * [Action.Restored]; savers can't tell the difference.
      */
     private fun LauncherStore.change(layout: Layout, settings: Settings) = dispatch(Action.Restored(layout, settings))
 
@@ -694,5 +695,47 @@ class LauncherStoreTest {
         runCurrent()
 
         assertEquals(AppearanceMode.Light, SettingsDoc.decode(storage.docs[DocName.Settings]).appearance)
+    }
+
+    @Test
+    @Verifies("FR-SET-07", "FR-SET-09", "FR-SET-14", "FR-SET-15", "FR-GEN-07")
+    fun `the settings changed in Settings are saved at once`() = runTest {
+        save(savedLayout, Settings())
+        val store = startedStore()
+
+        store.dispatch(Action.OpenSettings)
+        store.dispatch(Action.SetShowClock(false))
+        store.dispatch(Action.SetGridColumns(3))
+        store.dispatch(Action.SetHaptics(Haptics.Off))
+        store.dispatch(Action.SetAnimations(Animations.Reduced))
+        runCurrent()
+
+        val expected = Settings(showClock = false, gridColumns = 3, haptics = Haptics.Off, animations = Animations.Reduced)
+        assertEquals(expected, SettingsDoc.decode(storage.docs[DocName.Settings]))
+    }
+
+    @Test
+    @Verifies("FR-SET-16", "FR-GEST-06", "FR-GEN-07")
+    fun `Reset layout runs when its timer runs out, brings back the first-run layout with the default apps, and is saved`() = runTest {
+        catalog.installed.value = listOf(maps, clock)
+        catalog.defaults = DefaultApps(phone = clock.id)
+        val custom = Layout(grid = listOf(GridItem.Folder(FolderId(1), "Tools", listOf(maps.id, clock.id))), home = listOf(maps.id))
+        save(custom, savedSettings)
+        val store = startedStore()
+
+        store.dispatch(Action.ResetLayout)
+        store.dispatch(Action.HomeHidden)
+        advanceTimeBy(REMORSE_DELAY - 1.milliseconds)
+        runCurrent()
+        assertEquals(custom, store.state.value.layout, "Still waiting")
+
+        advanceTimeBy(1.milliseconds)
+        runCurrent()
+
+        val firstRun = Layout(grid = listOf(GridItem.App(clock.id), GridItem.App(maps.id)), home = listOf(clock.id))
+        assertEquals(firstRun, store.state.value.layout)
+        assertFalse(store.state.value.resettingLayout)
+        assertEquals(firstRun, LayoutDoc.decodeOrNull(storage.docs[DocName.Layout]))
+        assertEquals(savedSettings, store.state.value.settings, "Settings are kept")
     }
 }

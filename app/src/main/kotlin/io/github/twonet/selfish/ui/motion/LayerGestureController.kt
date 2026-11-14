@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Velocity
 import io.github.twonet.selfish.domain.state.Layer
+import io.github.twonet.selfish.domain.state.isPage
 import io.github.twonet.selfish.ui.tokens.LauncherMotion
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -176,11 +177,12 @@ class LayerGestureController(private val scope: CoroutineScope) {
      * Moves to the store's [layer], for example after a Home or Back press,
      * unless the transitions are already heading there. With [animate]
      * false it jumps, for a change made while the launcher wasn't in front.
-     * Wallpaper details opens over Home, so whatever it was opened from,
-     * Events or the Top Menu, goes back beneath it (FR-WP-09).
+     * Wallpaper details and Settings are pages that open over Home, so
+     * whatever they were opened from, Events or the Top Menu, goes back
+     * beneath them (FR-WP-09, FR-TOP-04).
      */
     fun follow(layer: Layer, animate: Boolean) {
-        val target = if (layer == Layer.WallpaperDetails) Layer.Home else layer
+        val target = if (layer.isPage) Layer.Home else layer
         if (target !in FOLLOWED) return
         val gridTarget = if (target == Layer.AppGrid) 1f else 0f
         val carouselTarget = GestureMath.carouselRest(target, carousel.value, endSide)

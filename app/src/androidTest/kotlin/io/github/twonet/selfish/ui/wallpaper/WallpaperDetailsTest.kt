@@ -27,6 +27,7 @@ import io.github.twonet.selfish.ui.TestLauncher
 import io.github.twonet.selfish.ui.TestLauncher.Companion.app
 import io.github.twonet.selfish.ui.TestLauncher.Companion.launcher
 import io.github.twonet.selfish.ui.components.ClockFormat
+import io.github.twonet.selfish.ui.settings.SettingsTags
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -123,11 +124,12 @@ class WallpaperDetailsTest {
     @Verifies("FR-WP-08", "FR-WP-09", "FR-GEST-09")
     fun thePulleyMenuKeepsThisWallpaperAndThenResumesDaily() {
         launcher.show(details())
-        assertEquals(listOf(string(R.string.menu_refresh_now), string(R.string.menu_keep_wallpaper)), pulleyLabels())
+        val settings = string(R.string.menu_wallpaper_settings)
+        assertEquals(listOf(string(R.string.menu_refresh_now), string(R.string.menu_keep_wallpaper), settings), pulleyLabels())
 
         choose(string(R.string.menu_keep_wallpaper))
         assertEquals(today.image, state.pinned)
-        assertEquals(listOf(string(R.string.menu_refresh_now), string(R.string.menu_resume_daily)), pulleyLabels())
+        assertEquals(listOf(string(R.string.menu_refresh_now), string(R.string.menu_resume_daily), settings), pulleyLabels())
 
         choose(string(R.string.menu_resume_daily))
         assertNull(state.pinned)
@@ -138,13 +140,28 @@ class WallpaperDetailsTest {
     fun pullingToRefreshNowChecksAndSaysSo() {
         launcher.show(details())
 
-        launcher.pull(rule.onNodeWithTag(WallpaperDetailsTags.SCREEN), toItem = 0, items = 2)
+        launcher.pull(rule.onNodeWithTag(WallpaperDetailsTags.SCREEN), toItem = 0, items = 3)
         rule.mainClock.advanceTimeBy(SETTLE_MILLIS)
         rule.waitForIdle()
 
         assertTrue(Action.RefreshWallpaper in launcher.dispatched)
         assertTrue(state.wallpaperWork.refreshing)
         rule.onNode(hasText(string(R.string.wallpaper_checking)) and inDetails()).assertIsDisplayed()
+    }
+
+    @Test
+    @Verifies("FR-WP-09", "FR-GEST-05")
+    fun pullingToWallpaperSettingsOpensSettings() {
+        launcher.show(details())
+
+        launcher.pull(rule.onNodeWithTag(WallpaperDetailsTags.SCREEN), toItem = 2, items = 3)
+        rule.mainClock.advanceTimeBy(SETTLE_MILLIS)
+        rule.waitForIdle()
+
+        assertTrue(Action.OpenSettings in launcher.dispatched)
+        assertEquals(Layer.Settings, state.layer)
+        rule.onNodeWithTag(WallpaperDetailsTags.SCREEN).assertDoesNotExist()
+        rule.onNodeWithTag(SettingsTags.PAGE).assertIsDisplayed()
     }
 
     @Test

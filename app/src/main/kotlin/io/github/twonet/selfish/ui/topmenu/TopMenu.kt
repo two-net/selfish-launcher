@@ -1,16 +1,13 @@
 package io.github.twonet.selfish.ui.topmenu
 
-import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.aspectRatio
@@ -33,7 +30,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -44,7 +40,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -56,11 +51,15 @@ import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.LauncherState
 import io.github.twonet.selfish.domain.state.Layer
 import io.github.twonet.selfish.domain.state.showsAmbiences
+import io.github.twonet.selfish.ui.components.ActionRow
+import io.github.twonet.selfish.ui.components.Choice
+import io.github.twonet.selfish.ui.components.ChoiceRow
 import io.github.twonet.selfish.ui.components.Glass
 import io.github.twonet.selfish.ui.components.LauncherText
 import io.github.twonet.selfish.ui.components.LocalWallpaperImages
+import io.github.twonet.selfish.ui.components.Section
 import io.github.twonet.selfish.ui.components.pressable
-import io.github.twonet.selfish.ui.tokens.Emphasis
+import io.github.twonet.selfish.ui.components.selectedOutline
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
 import io.github.twonet.selfish.ui.tokens.Shapes
 import io.github.twonet.selfish.ui.tokens.Sizes
@@ -71,7 +70,8 @@ import kotlin.math.roundToInt
 /**
  * The Top Menu (SRS §4.7): a glass sheet that hangs from the top edge over
  * the dimmed Home, with the appearance switch (FR-TOP-02), the Ambiences row
- * (FR-TOP-03) and shortcuts (FR-TOP-04), rendered from [state]; every touch
+ * (FR-TOP-03) and shortcuts to Launcher settings, System settings and
+ * Wallpaper details (FR-TOP-04), rendered from [state]; every touch
  * goes back as an action (AR-02).
  *
  * [io.github.twonet.selfish.ui.LauncherScreen] pulls the sheet down with the
@@ -130,12 +130,12 @@ fun TopMenu(
                     }
                 }
                 Column {
-                    Shortcut(stringResource(R.string.top_menu_system_settings)) { dispatch(Action.OpenSystemSettings) }
+                    ActionRow(stringResource(R.string.top_menu_launcher_settings)) { dispatch(Action.OpenSettings) }
+                    ActionRow(stringResource(R.string.top_menu_system_settings)) { dispatch(Action.OpenSystemSettings) }
                     // Only once there is a wallpaper to show, as in Events (FR-EVT-06).
                     if (state.wallpaper != null) {
-                        Shortcut(stringResource(R.string.menu_wallpaper_details)) { dispatch(Action.OpenWallpaperDetails) }
+                        ActionRow(stringResource(R.string.menu_wallpaper_details)) { dispatch(Action.OpenWallpaperDetails) }
                     }
-                    // "Launcher settings" arrives with the Settings page (#18).
                 }
             }
         }
@@ -150,54 +150,19 @@ internal object TopMenuTags {
     const val AMBIENCES = "top-menu-ambiences"
 }
 
-/** A labeled part of the menu; the label is a heading, so screen readers can jump between parts. */
-@Composable
-private fun Section(label: String, content: @Composable () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(Spacing.Small)) {
-        LauncherText(label, role = TextRole.Label, emphasis = Emphasis.Secondary, modifier = Modifier.semantics { heading() })
-        content()
-    }
-}
-
-private val APPEARANCES = listOf(
-    AppearanceMode.System to R.string.appearance_system,
-    AppearanceMode.Light to R.string.appearance_light,
-    AppearanceMode.Dark to R.string.appearance_dark,
-)
-
 /**
- * Light, Dark and System, as radio buttons; the current mode is outlined in
- * the highlight color (FR-TOP-02, FR-AMB-04). #17 makes the launcher follow it.
+ * System, Light and Dark, as radio buttons; the current mode is outlined in
+ * the highlight color (FR-TOP-02, FR-SET-01, FR-AMB-04). The Top Menu and
+ * Settings both show it.
  */
 @Composable
-private fun AppearanceSwitch(current: AppearanceMode, dispatch: (Action) -> Unit) {
-    Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(Spacing.Small)) {
-        for ((mode, label) in APPEARANCES) {
-            AppearanceOption(label, selected = mode == current, modifier = Modifier.weight(1f)) {
-                dispatch(Action.SetAppearance(mode))
-            }
-        }
-    }
-}
-
-@Composable
-private fun AppearanceOption(@StringRes label: Int, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    Box(
-        modifier
-            .clip(Shapes.Glass)
-            .selectedOutline(selected, LauncherTheme.highlight)
-            .pressable(role = Role.RadioButton, onClick = onClick)
-            .semantics { this.selected = selected },
-        contentAlignment = Alignment.Center,
-    ) {
-        LauncherText(
-            text = stringResource(label),
-            emphasis = if (selected) Emphasis.Primary else Emphasis.Secondary,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            modifier = Modifier.padding(Spacing.Small),
-        )
-    }
+fun AppearanceSwitch(current: AppearanceMode, dispatch: (Action) -> Unit) {
+    val choices = listOf(
+        Choice(AppearanceMode.System, stringResource(R.string.appearance_system)),
+        Choice(AppearanceMode.Light, stringResource(R.string.appearance_light)),
+        Choice(AppearanceMode.Dark, stringResource(R.string.appearance_dark)),
+    )
+    ChoiceRow(choices, selected = current, onSelect = { dispatch(Action.SetAppearance(it)) })
 }
 
 /**
@@ -264,24 +229,6 @@ private fun AmbienceThumbnail(image: ImageId) {
         Glass(Modifier.fillMaxSize()) {}
     }
 }
-
-/** A full-width row that opens something (FR-TOP-04). */
-@Composable
-private fun Shortcut(label: String, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .clip(Shapes.Glass)
-            .pressable(role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        LauncherText(label, modifier = Modifier.padding(horizontal = Spacing.Small, vertical = Spacing.Medium))
-    }
-}
-
-/** The outline of the chosen option, in the [highlight] color (FR-AMB-04), drawn over its content. */
-private fun Modifier.selectedOutline(selected: Boolean, highlight: Color): Modifier =
-    if (selected) border(Sizes.SelectedOutline, highlight, Shapes.Glass) else this
 
 /**
  * Takes every touch that reaches it, so nothing beneath can be pressed, and

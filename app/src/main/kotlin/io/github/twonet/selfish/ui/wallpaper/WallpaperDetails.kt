@@ -1,8 +1,6 @@
 package io.github.twonet.selfish.ui.wallpaper
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,7 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -35,7 +32,6 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import io.github.twonet.selfish.R
-import io.github.twonet.selfish.domain.model.Market
 import io.github.twonet.selfish.domain.model.WallpaperEntry
 import io.github.twonet.selfish.domain.state.Action
 import io.github.twonet.selfish.domain.state.LauncherState
@@ -47,6 +43,8 @@ import io.github.twonet.selfish.ui.components.PageHeader
 import io.github.twonet.selfish.ui.components.PulleyItem
 import io.github.twonet.selfish.ui.components.PulleyMenu
 import io.github.twonet.selfish.ui.components.TextButton
+import io.github.twonet.selfish.ui.components.marketName
+import io.github.twonet.selfish.ui.components.takeEveryTouch
 import io.github.twonet.selfish.ui.components.pulleyActions
 import io.github.twonet.selfish.ui.tokens.Emphasis
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
@@ -59,16 +57,16 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.Date
-import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
  * The page about the wallpaper in use (FR-WP-09, FR-WP-10): the image, its
  * title, copyright text, date and market, "Learn more", and when the
  * wallpaper was last updated. Its pulley menu offers "Refresh now", and
- * "Keep this wallpaper" or, once kept, "Resume daily" (FR-WP-08); the
- * pulley items are also actions on its header (FR-GEST-09). "Wallpaper
- * settings" arrives with the Settings page (#18).
+ * "Keep this wallpaper" or, once kept, "Resume daily" (FR-WP-08), and
+ * "Wallpaper settings", which opens Settings, whose wallpaper settings come
+ * right after the appearance; the pulley items are also actions on its
+ * header (FR-GEST-09).
  *
  * It covers the whole screen over the dimmed wallpaper and takes every touch,
  * so nothing beneath can be pressed; Back and Home close it (FR-GEN-03,
@@ -89,6 +87,7 @@ internal fun WallpaperDetails(
         } else {
             PulleyItem(stringResource(R.string.menu_keep_wallpaper)) { dispatch(Action.PinWallpaper(entry.image)) }
         },
+        PulleyItem(stringResource(R.string.menu_wallpaper_settings)) { dispatch(Action.OpenSettings) },
     )
     val dim = LauncherTheme.colors.dim
     Box(modifier.fillMaxSize().drawBehind { drawRect(dim) }.testTag(WallpaperDetailsTags.SCREEN)) {
@@ -194,18 +193,6 @@ private fun updated(instant: Instant, state: LauncherState): String {
     val skeleton = ClockFormat.SHORT_DATE + ClockFormat.time(state.clock?.is24Hour ?: true)
     val format = remember(locale, zone, skeleton) { ClockFormat.formatter(skeleton, locale, zone) }
     return format.format(Date.from(instant))
-}
-
-/** A market's name in the device's language, such as "English (United States)" for `en-US`. */
-@Composable
-private fun marketName(market: Market): String {
-    val locale = LocalConfiguration.current.locales[0]
-    return remember(market, locale) { Locale.forLanguageTag(market.code).getDisplayName(locale).ifBlank { market.code } }
-}
-
-/** Takes every touch that reaches it, so nothing beneath can be pressed. */
-private fun Modifier.takeEveryTouch(): Modifier = pointerInput(Unit) {
-    awaitEachGesture { awaitFirstDown().consume() }
 }
 
 /** Test tags for Wallpaper details' instrumented tests. */

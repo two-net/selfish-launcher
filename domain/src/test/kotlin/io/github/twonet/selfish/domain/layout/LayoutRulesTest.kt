@@ -8,7 +8,10 @@ import io.github.twonet.selfish.domain.model.GridItem
 import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.ports.DefaultApps
 import kotlin.test.Test
+import java.text.Collator
+import java.util.Locale
 import kotlin.test.assertEquals
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class LayoutRulesTest {
@@ -336,5 +339,51 @@ class LayoutRulesTest {
 
         assertEquals(listOf(app("dialer"), app("browser")), layout.home)
         assertEquals(emptyList(), LayoutRules.firstRun(apps, DefaultApps()).home)
+    }
+
+    // Sort A–Z (FR-SET-10)
+
+    private val collator: Collator = Collator.getInstance(Locale.ENGLISH)
+
+    private fun labeled(name: String, label: String) = AppEntry(app(name), label)
+
+    @Test
+    @Verifies("FR-SET-10")
+    fun `sorting puts apps and folders in alphabetical order, folders by name, and the apps in each folder too`() {
+        val apps = listOf(
+            labeled("zoom", "Zoom"),
+            labeled("eclair", "Éclair"),
+            labeled("maps", "maps"),
+            labeled("chat", "Chat"),
+            labeled("books", "Books"),
+            labeled("dice", "Dice"),
+        )
+        val games = GridItem.Folder(FolderId(1), "Games", listOf(app("dice"), app("books")))
+        val layout = Layout(
+            grid = listOf(item("zoom"), games, item("eclair"), item("maps"), item("chat")),
+            home = listOf(app("zoom"), app("chat")),
+        )
+
+        val sorted = LayoutRules.sortAlphabetically(layout, apps, collator)
+
+        // Accents and case don't push an app to the end: "Éclair" sorts by its letters.
+        assertEquals(
+            listOf(item("chat"), item("eclair"), games.copy(apps = listOf(app("books"), app("dice"))), item("maps"), item("zoom")),
+            sorted.grid,
+        )
+        assertEquals(layout.home, sorted.home, "Home keeps the user's order")
+        assertGridInvariants(sorted)
+    }
+
+    @Test
+    @Verifies("FR-SET-10")
+    fun `sorting puts apps the catalog doesn't list last, keeps ties in order, and leaves a sorted grid as it is`() {
+        val apps = listOf(labeled("b", "Same"), labeled("a", "Same"), labeled("c", "Alpha"))
+        val layout = Layout(grid = listOf(item("gone"), item("b"), item("a"), item("c")))
+
+        val sorted = LayoutRules.sortAlphabetically(layout, apps, collator)
+
+        assertEquals(listOf(item("c"), item("b"), item("a"), item("gone")), sorted.grid)
+        assertSame(sorted, LayoutRules.sortAlphabetically(sorted, apps, collator))
     }
 }

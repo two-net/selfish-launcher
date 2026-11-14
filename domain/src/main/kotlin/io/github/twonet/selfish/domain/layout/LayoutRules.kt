@@ -214,6 +214,30 @@ object LayoutRules {
         is GridItem.Folder -> other is GridItem.Folder && other.id == id
     }
 
+    /**
+     * The App Grid sorted A–Z (FR-SET-10): its items by label, apps by their
+     * name in [apps] and folders by their own name, mixed together, in
+     * [collator]'s order, which the store takes from the device locale. Each
+     * folder's apps are sorted the same way. Apps that [apps] doesn't list
+     * yet go last, in their order, and ties keep theirs. Home is left as it
+     * is: its order is the user's own.
+     */
+    fun sortAlphabetically(layout: Layout, apps: List<AppEntry>, collator: Comparator<in String>): Layout {
+        val labels = apps.associate { it.id to it.label }
+        val byLabel = nullsLast(collator)
+        val grid = layout.grid
+            .map { item -> if (item is GridItem.Folder) item.copy(apps = item.apps.sortedWith(compareBy(byLabel) { labels[it] })) else item }
+            .sortedWith(
+                compareBy(byLabel) { item ->
+                    when (item) {
+                        is GridItem.App -> labels[item.id]
+                        is GridItem.Folder -> item.name
+                    }
+                },
+            )
+        return if (grid == layout.grid) layout else layout.copy(grid = grid)
+    }
+
     /** Home's column count for [covers] covers: 2 for up to 4, 3 for 5 to 9 (FR-HOME-03). */
     fun coverColumns(covers: Int): Int = if (covers <= 4) 2 else 3
 

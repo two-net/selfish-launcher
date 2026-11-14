@@ -157,6 +157,9 @@ class DesignTokensTest {
             Sizes.WallpaperThumbnail,
             Sizes.AmbienceWidth,
             Sizes.SelectedOutline,
+            Sizes.SwitchIndicator,
+            Sizes.SwitchRing,
+            Sizes.Swatch,
         )
         val offScale = (Spacing.scale + sizes)
             .filter { it.value <= 0f || it.value % Spacing.Step.value != 0f }

@@ -13,7 +13,7 @@ val REMORSE_DELAY: Duration = 5.seconds
 
 /**
  * An action that runs only once its remorse timer has run out (FR-GEST-06,
- * DESIGN §4.6). Sorting A–Z and resetting the layout (#18) join this.
+ * DESIGN §4.6).
  */
 sealed interface Destructive {
     /** "Remove folder": its apps go back into the grid in its place (FR-FOLD-07). */
@@ -24,6 +24,12 @@ sealed interface Destructive {
      * shown when it was chosen, as they were then (FR-EVT-06).
      */
     data class ClearNotifications(val refs: Set<NotificationRef>) : Destructive
+
+    /** "Sort App Grid A–Z": the grid's items, and each folder's apps, in alphabetical order (FR-SET-10). */
+    data object SortAppGrid : Destructive
+
+    /** "Reset layout": the first-run App Grid and Home; settings and wallpaper are kept (FR-SET-16). */
+    data object ResetLayout : Destructive
 }
 
 /**

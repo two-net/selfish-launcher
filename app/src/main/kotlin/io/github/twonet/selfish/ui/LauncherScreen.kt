@@ -56,6 +56,7 @@ import io.github.twonet.selfish.domain.remorse.REMORSE_DELAY
 import io.github.twonet.selfish.domain.model.WallpaperEntry
 import io.github.twonet.selfish.domain.state.LauncherState
 import io.github.twonet.selfish.domain.state.appearance
+import io.github.twonet.selfish.domain.state.isPage
 import io.github.twonet.selfish.domain.state.openFolder
 import io.github.twonet.selfish.ui.components.LauncherHaptics
 import io.github.twonet.selfish.ui.components.RemorseBanner
@@ -68,6 +69,7 @@ import io.github.twonet.selfish.ui.motion.LayerGestureController
 import io.github.twonet.selfish.ui.motion.Scrolls
 import io.github.twonet.selfish.ui.motion.WindowBlur
 import io.github.twonet.selfish.ui.motion.layerGestures
+import io.github.twonet.selfish.ui.settings.SettingsPage
 import io.github.twonet.selfish.ui.tokens.LauncherMotion
 import io.github.twonet.selfish.ui.tokens.LauncherTheme
 import io.github.twonet.selfish.ui.tokens.Motion
@@ -96,8 +98,9 @@ import kotlinx.coroutines.launch
  * in [gestureInsets], the system's gesture areas and the status bar, are
  * left to the system, so a pull from the top edge still opens the
  * notification shade (FR-GEST-04); tests pass their own. While a folder is
- * open, swipes are the folder's (FR-FOLD-07). Wallpaper details fades in
- * over Home and takes every touch until Back or Home closes it (FR-WP-09).
+ * open, swipes are the folder's (FR-FOLD-07). Wallpaper details and
+ * Settings fade in over Home and take every touch until Back or Home closes
+ * them (FR-WP-09, SRS §4.13).
  *
  * A new wallpaper is applied only once no finger is down and nothing is
  * settling, with the outgoing image fading out over it (FR-ANIM-10).
@@ -178,7 +181,9 @@ fun LauncherScreen(
     val closeMenu = remember { { currentDispatch(Action.CloseContextMenu) } }
     val folderOpen by rememberUpdatedState(state.openFolder != null)
     val detailsOpen = state.layer == Layer.WallpaperDetails
-    val currentDetailsOpen by rememberUpdatedState(detailsOpen)
+    // Wallpaper details or Settings: a page over Home that takes every touch.
+    val pageOpen = state.layer.isPage
+    val currentPageOpen by rememberUpdatedState(pageOpen)
     // The entry Wallpaper details shows, kept while it fades out.
     val shownWallpaper = remember { Kept<WallpaperEntry>() }
     val detailsEntry = (state.wallpaper ?: shownWallpaper.value).also { shownWallpaper.value = it }
@@ -222,7 +227,7 @@ fun LauncherScreen(
                             topMenuForward = topMenu.canScrollForward,
                         )
                     },
-                    paused = { folderOpen || currentDetailsOpen },
+                    paused = { folderOpen || currentPageOpen },
                 )
                 .onUnhandledTap(closeMenu)
                 .testTag(LauncherTags.ROOT),
@@ -240,7 +245,7 @@ fun LauncherScreen(
                             translationX = GestureMath.homeShift(controller.sideways) * size.width
                         }
                         .then(
-                            if (open || eventsOpen || topMenuOpen || detailsOpen) {
+                            if (open || eventsOpen || topMenuOpen || pageOpen) {
                                 Modifier.clearAndSetSemantics {}
                             } else {
                                 // Screen-reader users open the grid, Events and the
@@ -330,12 +335,21 @@ fun LauncherScreen(
                 ) {
                     detailsEntry?.let { WallpaperDetails(state, it, dispatch) }
                 }
+                AnimatedVisibility(
+                    visible = state.layer == Layer.Settings,
+                    enter = fadeIn(motion.fadeIn()),
+                    exit = fadeOut(motion.fadeOut()),
+                ) {
+                    SettingsPage(state, dispatch)
+                }
             }
             val remorse = state.remorse
             if (remorse != null) {
                 val label = when (remorse.action) {
                     is Destructive.RemoveFolder -> stringResource(R.string.remorse_remove_folder)
                     is Destructive.ClearNotifications -> stringResource(R.string.remorse_clear_notifications)
+                    Destructive.SortAppGrid -> stringResource(R.string.remorse_sort_az)
+                    Destructive.ResetLayout -> stringResource(R.string.remorse_reset_layout)
                 }
                 RemorseBanner(
                     label = label,

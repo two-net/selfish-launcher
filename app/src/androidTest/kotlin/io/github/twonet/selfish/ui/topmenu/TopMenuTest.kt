@@ -7,6 +7,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.click
@@ -322,6 +323,23 @@ class TopMenuTest {
 
     @Test
     @Verifies("FR-TOP-04")
+    fun theLauncherSettingsShortcutComesFirstAndOpensSettingsOverHome() {
+        show(withAmbiences())
+
+        val shortcuts = listOf(R.string.top_menu_launcher_settings, R.string.top_menu_system_settings, R.string.menu_wallpaper_details)
+            .map { rule.onNode(option(string(it)) and hasRole(Role.Button)).fetchSemanticsNode().boundsInRoot.top }
+        assertEquals(shortcuts.sorted(), shortcuts, "Launcher settings, System settings, then Wallpaper details")
+
+        rule.onNode(option(string(R.string.top_menu_launcher_settings))).performClick()
+        rule.waitForIdle()
+
+        assertTrue(Action.OpenSettings in dispatched)
+        assertEquals(Layer.Settings, state.layer)
+        sheet().assertIsNotDisplayed()
+    }
+
+    @Test
+    @Verifies("FR-TOP-04")
     fun theWallpaperDetailsShortcutShowsOnceThereIsAWallpaper() {
         show(withAmbiences())
 
@@ -395,7 +413,13 @@ class TopMenuTest {
         show(withAmbiences(), fontScale = LARGEST_FONT_SCALE)
 
         val parts = listOf(R.string.appearance_system, R.string.appearance_light, R.string.appearance_dark).map(::appearance) +
-            listOf(daily(), ambience(older), option(string(R.string.top_menu_system_settings)), option(string(R.string.menu_wallpaper_details)))
+            listOf(
+                daily(),
+                ambience(older),
+                option(string(R.string.top_menu_launcher_settings)),
+                option(string(R.string.top_menu_system_settings)),
+                option(string(R.string.menu_wallpaper_details)),
+            )
         for (part in parts) rule.onNode(part).performScrollTo().assertIsDisplayed()
     }
 

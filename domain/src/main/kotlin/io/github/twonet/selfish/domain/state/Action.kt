@@ -1,11 +1,13 @@
 package io.github.twonet.selfish.domain.state
 
+import io.github.twonet.selfish.domain.model.Animations
 import io.github.twonet.selfish.domain.model.AppEntry
 import io.github.twonet.selfish.domain.model.AppId
 import io.github.twonet.selfish.domain.model.AppearanceMode
 import io.github.twonet.selfish.domain.model.Bounds
 import io.github.twonet.selfish.domain.model.FolderId
 import io.github.twonet.selfish.domain.model.GridItem
+import io.github.twonet.selfish.domain.model.Haptics
 import io.github.twonet.selfish.domain.model.HighlightSetting
 import io.github.twonet.selfish.domain.model.Layout
 import io.github.twonet.selfish.domain.model.DownloadOn
@@ -175,7 +177,7 @@ sealed interface Action {
     /** "Clear notifications", which runs once its remorse timer runs out (FR-EVT-06, FR-GEST-06). */
     data object ClearNotifications : Action
 
-    /** The appearance switch chose [mode] (FR-TOP-02, FR-THM-09). It is saved with the settings. */
+    /** The appearance switch, in the Top Menu or Settings, chose [mode] (FR-TOP-02, FR-SET-01, FR-THM-09). It is saved with the settings. */
     data class SetAppearance(val mode: AppearanceMode) : Action
 
     /**
@@ -220,16 +222,16 @@ sealed interface Action {
     /** The system couldn't set [image] as the wallpaper; the current one stays (FR-WP-11). */
     data class WallpaperApplyFailed(val image: ImageId) : Action
 
-    /** "Daily Bing wallpaper" turned [on] or off (FR-SET-02, FR-WP-13). Settings (#18) sends it. */
+    /** "Daily Bing wallpaper" turned [on] or off (FR-SET-02, FR-WP-13). */
     data class SetDailyWallpaper(val on: Boolean) : Action
 
-    /** The Bing market, or Automatic for `null` (FR-SET-03, FR-WP-03). Settings (#18) sends it. */
+    /** The Bing market, or Automatic for `null` (FR-SET-03, FR-WP-03). */
     data class SetMarket(val market: Market?) : Action
 
-    /** "Also use on lock screen" turned [on] or off (FR-SET-04, FR-WP-05). Settings (#18) sends it. */
+    /** "Also use on lock screen" turned [on] or off (FR-SET-04, FR-WP-05). */
     data class SetWallpaperLockScreen(val on: Boolean) : Action
 
-    /** "Download on" (FR-SET-05, FR-WP-06). Settings (#18) sends it. */
+    /** "Download on" (FR-SET-05, FR-WP-06). */
     data class SetDownloadOn(val downloadOn: DownloadOn) : Action
 
     /**
@@ -238,6 +240,43 @@ sealed interface Action {
      */
     data class SystemWallpaperRead(val number: Int, val id: WallpaperId?, val colors: List<Rgb>) : Action
 
-    /** "Highlight color": Automatic or a preset (FR-SET-06, FR-AMB-05). Settings (#18) sends it. */
+    /** "Highlight color": Automatic or a preset (FR-SET-06, FR-AMB-05). */
     data class SetHighlight(val setting: HighlightSetting) : Action
+
+    /**
+     * "Launcher settings" in the Top Menu or "Wallpaper settings" in
+     * Wallpaper details: opens the Settings page (FR-TOP-04, FR-WP-09).
+     */
+    data object OpenSettings : Action
+
+    /** "About" in Settings, which opens over it (FR-SET-17). Ignored anywhere but Settings. */
+    data object OpenAbout : Action
+
+    /** "Time and date on Home": [show] them or not (FR-SET-07, FR-HOME-02). */
+    data class SetShowClock(val show: Boolean) : Action
+
+    /** "App Grid columns" (FR-SET-09, FR-GRID-02). A count outside `Settings.GRID_COLUMNS` is ignored. */
+    data class SetGridColumns(val columns: Int) : Action
+
+    /** "Haptic feedback": follow the system or off (FR-SET-14, FR-GEST-08). */
+    data class SetHaptics(val haptics: Haptics) : Action
+
+    /** "Animations": follow the system or reduced (FR-SET-15, FR-ANIM-15). */
+    data class SetAnimations(val animations: Animations) : Action
+
+    /**
+     * "Notifications in Events" turned off in Settings (FR-SET-12). Turning
+     * it on is [TurnOnNotifications], which asks for access first.
+     */
+    data object TurnOffNotifications : Action
+
+    /** "Sort App Grid A–Z", which runs once its remorse timer runs out (FR-SET-10, FR-GEST-06). */
+    data object SortAppGrid : Action
+
+    /**
+     * "Reset layout", which runs once its remorse timer runs out: the
+     * first-run App Grid and Home come back, and the settings and wallpaper
+     * are kept (FR-SET-16, FR-GEST-06).
+     */
+    data object ResetLayout : Action
 }

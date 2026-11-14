@@ -25,11 +25,26 @@ sealed interface Layer {
 
     /**
      * The page about the current wallpaper (FR-WP-09), opened from Events
-     * (FR-EVT-03, FR-EVT-06). #14 draws it; until then nothing opens it,
-     * because there is no wallpaper entry yet.
+     * (FR-EVT-03, FR-EVT-06) and the Top Menu (FR-TOP-04).
      */
     data object WallpaperDetails : Layer
+
+    /**
+     * The launcher's Settings page (SRS §4.13), opened from the Top Menu
+     * (FR-TOP-04) and from Wallpaper details (FR-WP-09). About opens over it
+     * as [Overlay.About], so Back returns to it first.
+     */
+    data object Settings : Layer
 }
+
+/**
+ * Whether this layer is a page that opens over Home rather than a view a
+ * swipe leads to: Wallpaper details and Settings. Whatever it was opened
+ * from goes back beneath it, and it takes every touch until Back or Home
+ * closes it (DESIGN §6.2).
+ */
+val Layer.isPage: Boolean
+    get() = this == Layer.WallpaperDetails || this == Layer.Settings
 
 /**
  * Something open over a [Layer], such as a folder. Overlays stack; System
@@ -50,6 +65,12 @@ sealed interface Overlay {
      * FR-GRID-06). At most one is open at a time.
      */
     data class ContextMenu(val target: MenuTarget) : Overlay
+
+    /**
+     * Settings' About page (FR-SET-17), open over [Layer.Settings], so Back
+     * returns to Settings before Home.
+     */
+    data object About : Overlay
 }
 
 /**

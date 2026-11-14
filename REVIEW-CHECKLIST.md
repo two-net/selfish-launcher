@@ -14,7 +14,7 @@ issues add their items here. Every release PR signs off the whole list.
 
 ## General (SRS §4.1)
 
-- [ ] [FR-GEN-01] The launcher is named Selfish Launcher, with its own icon, in the system app list and the Home-app chooser; and in About once Settings has it (#18). The icon resembles no Jolla, Sailfish OS, Microsoft or Bing mark (C-3, C-4), and looks right as a themed (monochrome) icon.
+- [ ] [FR-GEN-01] The launcher is named Selfish Launcher, with its own icon, in the system app list, the Home-app chooser and Settings' About. The icon resembles no Jolla, Sailfish OS, Microsoft or Bing mark (C-3, C-4), and looks right as a themed (monochrome) icon.
 - [ ] [FR-GEN-06] On a device, with the launcher open: installing an app adds it; updating one that changes its name or icon shows the new name and icon; disabling, re-enabling and uninstalling one remove and restore it. `LauncherAppsCatalogTest` covers only enabling and disabling.
 - [ ] [FR-GEN-10] With a work profile, its apps are listed with the system's work badge, and adding or removing the profile updates the list. (Could; scope pending Q-6, #33.)
 
@@ -58,7 +58,7 @@ issues add their items here. Every release PR signs off the whole list.
 ## Top Menu (SRS §4.7)
 
 - [ ] [FR-TOP-01, FR-ANIM-01, FR-GEST-04] On a device, swiping down from the middle of Home pulls the Top Menu down with the finger over a dimming wallpaper, and a short slow pull springs back; a pull that starts on the status bar opens the system's notification shade instead. Checked with gesture and 3-button navigation, and with a display cutout.
-- [ ] [FR-TOP-04] "System settings" opens the Settings app over the launcher, and Back returns to the open Top Menu. Once an image is cached, "Wallpaper details" opens the page over Home, and Back closes it. ("Launcher settings" arrives with #18.)
+- [ ] [FR-TOP-04] "System settings" opens the Settings app over the launcher, and Back returns to the open Top Menu. Once an image is cached, "Wallpaper details" opens the page over Home, and Back closes it. "Launcher settings" opens Settings over Home the same way.
 - [ ] [FR-TOP-06, FR-GEST-07, FR-GEST-08] Long-pressing beside the covers or on the clock opens the Top Menu with a tick, and with no tick when the system's touch feedback is off; long-pressing a cover still lifts it and opens its menu, and Home's menu never opens with it.
 - [ ] [FR-TOP-02, FR-TOP-03, NFR-A11Y-01] With TalkBack, the parts of the menu are read as headings, the appearance options as radio buttons with the current one selected, and each ambience by its image's title. "Show top menu" on Home and "Show Home" on the menu open and close it.
 
@@ -76,17 +76,17 @@ issues add their items here. Every release PR signs off the whole list.
 - [ ] [FR-ANIM-05, FR-ANIM-07, FR-ANIM-08] In screen recordings, things arriving or settling decelerate into place (reflow, a folder opening, a menu opening) and things leaving accelerate away (a folder closing, a menu closing, items fading out).
 - [ ] [FR-ANIM-09] Releasing a pulley menu on an item flashes it in the highlight color for the Short duration before it runs, on Events and in a folder. Checked with a screen recording.
 - [ ] [FR-ANIM-13] With no covers, Home's "Swipe up to see your apps" has a glowing point above it that traces a swipe up three times each time Home comes on screen, and then rests; with reduced motion it stays still.
-- [ ] [AC-09, FR-ANIM-15, NFR-A11Y-05] On a device with "Remove animations" on in the accessibility settings: opening and closing the App Grid, Events and the Top Menu, a folder and a context menu, launching an app and returning are all instant or quick fades, and drags still follow the finger; turning it off brings the animations back without restarting the launcher. The launcher's own Animations switch arrives with Settings (#18).
+- [ ] [AC-09, FR-ANIM-15, NFR-A11Y-05] On a device with "Remove animations" on in the accessibility settings: opening and closing the App Grid, Events and the Top Menu, a folder and a context menu, launching an app and returning are all instant or quick fades, and drags still follow the finger; turning it off brings the animations back without restarting the launcher. With the system's animations on, Animations set to Reduced in Settings does the same at once, and Follow system undoes it.
 
 ## Bing wallpaper (SRS §4.10)
 
 - [ ] [FR-ANIM-10, AC-03] On a device, a new image crossfades in over the Ambient duration with no flash of black or of the old image, and only once the finger lifts: holding a finger on Home while it arrives (for example after "Refresh now") keeps the old one until release. With the App Grid open it changes under the dim. Checked with a screen recording, also with "Remove animations" on (a fade of at most 100 ms).
 - [ ] [AC-03, FR-WP-01, IF-WP-01, IF-WP-04] On a device with a network, after `adb shell pm clear io.github.twonet.selfish` and choosing the launcher as Home: today's image becomes the wallpaper within a minute, `adb shell run-as io.github.twonet.selfish ls no_backup/wallpapers/images` lists up to 8 images, and Wallpaper details shows the title, copyright text, date and market of today's image in the device's market.
 - [ ] [FR-WP-04] The image fills the screen, centered and undistorted, on the reference device and on two other OEM devices (R-5), for a portrait image and for one with only a landscape version, with gesture and 3-button navigation.
-- [ ] [FR-WP-05] With "Also use on lock screen" on, the lock screen shows the image too, and turning it on puts the current one there at once; off, the lock screen keeps what it had. (The switch arrives with Settings, #18.)
+- [ ] [FR-WP-05] With "Also use on lock screen" on in Settings, the lock screen shows the image too, and turning it on puts the current one there at once; off, the lock screen keeps what it had.
 - [ ] [FR-WP-09, FR-WP-10, NFR-A11Y-03] Wallpaper details is legible over a bright and a dark wallpaper in both appearances, shows the title, copyright text, date, market and last update, and its pulley menu offers "Refresh now", then "Keep this wallpaper" or "Resume daily", with a tick for each. With TalkBack, the header offers them as actions and "Checking for a new image…" is announced.
 - [ ] [AR-06, NFR-PWR-02] `adb shell dumpsys jobscheduler` shows the launcher's one periodic job (3 hours, a network required, persisted across a reboot) and at most one retry; it holds no wake lock, alarm or foreground service, and turning Daily off removes both jobs.
-- [ ] [FR-WP-13] Turning Daily Bing wallpaper off (Settings, #18) keeps the current system wallpaper, hides the Ambiences row and the Events card, and leaves `noBackupFilesDir/wallpapers/` empty (`adb shell run-as io.github.twonet.selfish ls no_backup`).
+- [ ] [FR-WP-13] Turning Daily Bing wallpaper off in Settings keeps the current system wallpaper, hides the Ambiences row and the Events card, and leaves `noBackupFilesDir/wallpapers/` empty (`adb shell run-as io.github.twonet.selfish ls no_backup`).
 
 ## Ambience (SRS §4.11)
 
@@ -98,8 +98,17 @@ issues add their items here. Every release PR signs off the whole list.
 
 - [ ] [FR-THM-03, AC-01] On a device, with Appearance set to System and the App Grid open, scrolled and with a query typed: switching the device's dark theme from Quick Settings crossfades the launcher within a second, keeping the grid, its scroll position and the query. So does a dark-theme schedule taking effect, and Battery Saver turning dark theme on. Checked with a screen recording.
 - [ ] [FR-THM-05, NFR-A11Y-03] In both appearances, over a bright and a dark wallpaper, text stays legible on Home (the clock on its scrim), on glass and on the dim, and the wallpaper itself never changes.
-- [ ] [FR-THM-07, FR-THM-09, AC-02] With the device in dark theme, choosing Light in the Top Menu turns every surface Light at once (Home, the App Grid, a folder, a context menu, the remorse banner, Events, the Top Menu, Wallpaper details) and it stays Light after a restart; choosing Dark with the device light does the opposite. Settings (#18) and the tutorial (#19) are checked as they arrive.
+- [ ] [FR-THM-07, FR-THM-09, AC-02] With the device in dark theme, choosing Light in the Top Menu turns every surface Light at once (Home, the App Grid, a folder, a context menu, the remorse banner, Events, the Top Menu, Wallpaper details, Settings and About) and it stays Light after a restart; choosing Dark with the device light does the opposite. The tutorial (#19) is checked as it arrives.
 - [ ] [FR-THM-08] On each surface, in both appearances, the status-bar icons and the navigation bar stay legible: with gesture navigation the handle, and with 3-button navigation the buttons on their scrim.
+
+## Settings (SRS §4.13)
+
+- [ ] [FR-SET-17, FR-GEN-01] About shows the launcher's name and version, the image credits with the current image's copyright text, and every shipped component under the Apache License 2.0, whose text opens on request. The non-affiliation notice is worded as #31 (Q-4) settles.
+- [ ] [FR-SET-16, FR-HOME-07] On a device, with apps moved, a folder and covers of your own: Reset layout shows its banner, and tapping it keeps everything. Letting it run brings back an alphabetical grid with no folders and the device's default phone, messaging, browser and camera apps on Home, and keeps the settings, the wallpaper and a pinned ambience, also after a restart.
+- [ ] [FR-SET-10, FR-GEST-06] On a device, Sort A–Z under its banner puts the grid's apps and folders, and each folder's apps, in alphabetical order for the device language (try one with accents, such as French), and leaves Home as it was.
+- [ ] [FR-SET-12, FR-ONB-04] On a fresh install, turning on Notifications in Events in Settings opens the launcher's notification-access screen; granting it and pressing Back shows the switch on and the notifications in Events. Turning it off in Settings hides them at once.
+- [ ] [FR-SET-06, FR-AMB-04] Each highlight swatch looks like the highlight it gives, and choosing one recolors the headers, outlines and press glows at once; over a bright and a dark wallpaper, in both appearances.
+- [ ] [NFR-A11Y-01, FR-GEST-09] With TalkBack, Settings' switches are read with their state, the options as radio buttons with the chosen one selected, the swatches by their color names, and "About" is an action on the header.
 
 ## Bing interface (SRS §5.3)
 

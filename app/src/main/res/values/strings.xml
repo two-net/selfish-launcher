@@ -70,6 +70,8 @@
     <string name="top_menu_ambiences">Ambiences</string>
     <!-- The first tile in the Ambiences row: a new wallpaper every day, instead of keeping one (FR-TOP-03). -->
     <string name="ambience_daily">Daily</string>
+    <!-- The Top Menu's shortcut that opens the launcher's own Settings page (FR-TOP-04). -->
+    <string name="top_menu_launcher_settings">Launcher settings</string>
     <!-- The Top Menu's shortcut that opens the device's Settings app (FR-TOP-04). -->
     <string name="top_menu_system_settings">System settings</string>
 
@@ -86,12 +88,118 @@
     <string name="wallpaper_updated">Updated %1$s</string>
     <!-- Shown while "Refresh now" checks for a new image (FR-WP-09). -->
     <string name="wallpaper_checking">Checking for a new image…</string>
+    <!-- Wallpaper details' pulley menu item that opens Settings, whose wallpaper settings come near the top (FR-WP-09). -->
+    <string name="menu_wallpaper_settings">Wallpaper settings</string>
+
+    <!-- Settings (SRS §4.13); the Appearance part uses top_menu_appearance -->
+    <!-- The Settings page's header (UI-02). -->
+    <string name="settings_title">Settings</string>
+    <!-- Settings' pulley menu item, and the row at the end of the page, that open About (FR-SET-17). -->
+    <string name="menu_about">About</string>
+    <!-- The label above the highlight color choices: Automatic or one of 8 colors (FR-SET-06). -->
+    <string name="settings_highlight">Highlight color</string>
+    <!-- The highlight color taken from the wallpaper (FR-AMB-01, FR-SET-06). -->
+    <string name="highlight_automatic">Automatic</string>
+    <!-- The 8 preset highlight colors, read by screen readers (FR-AMB-05, FR-SET-06). -->
+    <string name="highlight_red">Red</string>
+    <string name="highlight_orange">Orange</string>
+    <string name="highlight_yellow">Yellow</string>
+    <string name="highlight_green">Green</string>
+    <string name="highlight_teal">Teal</string>
+    <string name="highlight_blue">Blue</string>
+    <string name="highlight_purple">Purple</string>
+    <string name="highlight_pink">Pink</string>
+    <!-- The heading of the wallpaper settings (FR-SET-02 to FR-SET-05). -->
+    <string name="settings_wallpaper">Wallpaper</string>
+    <!-- Turns the daily wallpaper from Bing on or off (FR-SET-02, FR-WP-01, FR-WP-13). -->
+    <string name="settings_daily_wallpaper">Daily Bing wallpaper</string>
+    <!-- Beneath "Daily Bing wallpaper": what it does. -->
+    <string name="settings_daily_wallpaper_description">A new Bing image of the day as your wallpaper</string>
+    <!-- The Bing region whose image of the day is used (FR-SET-03, FR-WP-03). -->
+    <string name="settings_market">Bing market</string>
+    <!-- The market chosen from the device's language and region: %1$s is that market's name, such as "English (United States)" (FR-WP-03). -->
+    <string name="settings_market_automatic">Automatic (%1$s)</string>
+    <!-- Also sets the image of the day as the lock screen wallpaper (FR-SET-04, FR-WP-05). -->
+    <string name="settings_lock_screen">Also use on lock screen</string>
+    <!-- Which networks the image of the day is downloaded on (FR-SET-05, FR-WP-06). -->
+    <string name="settings_download_on">Download on</string>
+    <string name="download_any_network">Any network</string>
+    <string name="download_wifi_only">Wi-Fi only</string>
+    <!-- The heading of the Home settings (FR-SET-07). -->
+    <string name="settings_home">Home</string>
+    <!-- Shows or hides the large time and date at the top of Home (FR-SET-07, FR-HOME-02). -->
+    <string name="settings_show_clock">Time and date on Home</string>
+    <!-- The heading of the App Grid settings (FR-SET-09, FR-SET-10). -->
+    <string name="settings_app_grid">App Grid</string>
+    <!-- The label above the App Grid's column counts, 3, 4 or 5 (FR-SET-09). -->
+    <string name="settings_grid_columns">Columns</string>
+    <!-- Sorts the App Grid alphabetically after a remorse timer (FR-SET-10). -->
+    <string name="settings_sort_az">Sort A–Z</string>
+    <!-- Beneath "Sort A–Z": what it does. -->
+    <string name="settings_sort_az_description">Puts your apps and folders in alphabetical order</string>
+    <!-- The heading of the Events settings (FR-SET-12). -->
+    <string name="settings_events">Events</string>
+    <!-- Shows notifications in Events, asking for notification access first if needed (FR-SET-12, FR-ONB-04). -->
+    <string name="settings_notifications_in_events">Notifications in Events</string>
+    <!-- Beneath "Notifications in Events": why access is needed, and what happens to notifications (FR-ONB-04, NFR-PRIV-05). -->
+    <string name="settings_notifications_in_events_description">Needs notification access. Notifications are only shown: they are never saved or sent anywhere.</string>
+    <!-- The heading of the haptics and animation settings (FR-SET-14, FR-SET-15). -->
+    <string name="settings_touch_and_motion">Touch and motion</string>
+    <!-- The label above the haptic feedback choices (FR-SET-14, FR-GEST-08). -->
+    <string name="settings_haptics">Haptic feedback</string>
+    <!-- The label above the animation choices (FR-SET-15, FR-ANIM-15). -->
+    <string name="settings_animations">Animations</string>
+    <!-- Haptic feedback or animations as the device's own setting has them (FR-SET-14, FR-SET-15). -->
+    <string name="settings_follow_system">Follow system</string>
+    <!-- No haptic feedback at all (FR-SET-14). -->
+    <string name="haptics_off">Off</string>
+    <!-- Instant transitions and short fades (FR-SET-15, FR-ANIM-15). -->
+    <string name="animations_reduced">Reduced</string>
+    <!-- The heading of the layout settings (FR-SET-16). -->
+    <string name="settings_layout">Layout</string>
+    <!-- Brings back the first-run App Grid and Home after a remorse timer (FR-SET-16). -->
+    <string name="settings_reset_layout">Reset layout</string>
+    <!-- Beneath "Reset layout": what it does, and what it keeps (FR-SET-16). -->
+    <string name="settings_reset_layout_description">Brings back the App Grid and Home as they were at first. Settings and the wallpaper are kept.</string>
+
+    <!-- About (FR-SET-17); its header is menu_about -->
+    <!-- The launcher's version: %1$s is a version name such as 1.0.0 (FR-SET-17). -->
+    <string name="about_version">Version %1$s</string>
+    <!-- The non-affiliation notice (FR-SET-17). Its final wording is pending Q-4 (#31). -->
+    <string name="about_not_affiliated">Not affiliated with Jolla or Microsoft.</string>
+    <!-- The heading of the image attribution (FR-SET-17). -->
+    <string name="about_images">Wallpapers</string>
+    <!-- Where the wallpapers come from, and who owns them (FR-SET-17, FR-WP-10). -->
+    <string name="about_images_attribution">Wallpapers are Bing\'s image of the day. Each image belongs to its owners, credited with it in Events and in Wallpaper details.</string>
+    <!-- The copyright text of the wallpaper in use: %1$s is that text, as Bing gives it (FR-SET-17, FR-WP-10). -->
+    <string name="about_current_image">Current wallpaper: %1$s</string>
+    <!-- The heading of the open-source licenses (FR-SET-17). -->
+    <string name="about_licenses">Open-source licenses</string>
+    <!-- Before the list of open-source components the launcher is built with (FR-SET-17). -->
+    <string name="about_licenses_intro">Selfish Launcher is built with these open-source components, each under the Apache License 2.0:</string>
+    <!-- Shows the full text of the Apache License 2.0 beneath the list (FR-SET-17). -->
+    <string name="about_show_license">Show the license</string>
+    <!-- Hides the license text again. -->
+    <string name="about_hide_license">Hide the license</string>
+    <!-- The names of the open-source components the launcher ships (DESIGN §7.1): proper names, not translated. -->
+    <string name="oss_kotlin" translatable="false">Kotlin standard library</string>
+    <string name="oss_jetbrains_annotations" translatable="false">JetBrains Java Annotations</string>
+    <string name="oss_kotlinx_coroutines" translatable="false">kotlinx.coroutines</string>
+    <string name="oss_kotlinx_serialization" translatable="false">kotlinx.serialization</string>
+    <string name="oss_compose" translatable="false">Jetpack Compose</string>
+    <string name="oss_androidx" translatable="false">AndroidX libraries</string>
+    <string name="oss_listenablefuture" translatable="false">Guava ListenableFuture</string>
+    <string name="oss_jspecify" translatable="false">JSpecify</string>
 
     <!-- Remorse timers (FR-GEST-06) -->
     <!-- The banner of a folder about to be removed. -->
     <string name="remorse_remove_folder">Removing folder</string>
     <!-- The banner of notifications about to be cleared. -->
     <string name="remorse_clear_notifications">Clearing notifications</string>
+    <!-- The banner of the App Grid about to be sorted A–Z (FR-SET-10). -->
+    <string name="remorse_sort_az">Sorting apps A–Z</string>
+    <!-- The banner of the layout about to be reset (FR-SET-16). -->
+    <string name="remorse_reset_layout">Resetting layout</string>
     <!-- How screen readers read the remorse banner, a button that cancels the action: %1$s is the banner's label. -->
     <string name="remorse_cancel">Cancel: %1$s</string>
 </resources>

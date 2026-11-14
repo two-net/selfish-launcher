@@ -82,6 +82,13 @@ data class LauncherState(
      */
     val resolvingDefaults: Boolean = false,
     /**
+     * Whether "Reset layout" ran and is waiting for the default apps, so the
+     * first-run layout replaces the current one when they arrive (FR-SET-16).
+     * The current layout stays until then, so nothing flashes empty. Not
+     * saved: a process that dies first keeps the user's layout.
+     */
+    val resettingLayout: Boolean = false,
+    /**
      * The time for Home's clock (FR-HOME-02). Updated only while the launcher
      * is shown, so the clock doesn't wake it in the background (NFR-PWR-02).
      */

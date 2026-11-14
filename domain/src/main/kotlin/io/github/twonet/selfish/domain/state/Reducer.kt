@@ -94,9 +94,17 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
         }
     }
 
+    // A first run, or "Reset layout", which keeps the settings and the
+    // wallpaper (FR-HOME-07, FR-SET-16). A folder the reset removed closes,
+    // and a removal waiting for its timer is dropped with it, so it can't
+    // take a new folder that reuses its ID.
     is Action.DefaultAppsResolved ->
-        if (state.layout == null) {
-            Next(state.copy(layout = LayoutRules.firstRun(state.apps, action.defaults), resolvingDefaults = false))
+        if (state.layout == null || state.resettingLayout) {
+            val remorse = state.remorse.takeUnless { state.resettingLayout && it?.action is Destructive.RemoveFolder }
+            Next(
+                state.copy(resolvingDefaults = false, resettingLayout = false, remorse = remorse)
+                    .withLayout(LayoutRules.firstRun(state.apps, action.defaults)),
+            )
         } else {
             Next(state.copy(resolvingDefaults = false))
         }
@@ -394,6 +402,28 @@ private fun transition(state: LauncherState, action: Action): Next = when (actio
     is Action.SystemWallpaperRead -> systemWallpaperRead(state, action)
 
     is Action.SetHighlight -> setHighlight(state, action.setting)
+
+    Action.OpenSettings -> openSettings(state)
+
+    Action.OpenAbout -> openAbout(state)
+
+    is Action.SetShowClock -> setShowClock(state, action.show)
+
+    is Action.SetGridColumns -> setGridColumns(state, action.columns)
+
+    is Action.SetHaptics -> setHaptics(state, action.haptics)
+
+    is Action.SetAnimations -> setAnimations(state, action.animations)
+
+    Action.TurnOffNotifications -> turnOffNotifications(state)
+
+    // Nothing changes until the timer runs out, so the banner can cancel it;
+    // the same action already waiting is left to run (FR-SET-10, FR-SET-16,
+    // FR-GEST-06). Before the first-run layout is built there is nothing to
+    // sort or reset.
+    Action.SortAppGrid -> startLayoutRemorse(state, Destructive.SortAppGrid)
+
+    Action.ResetLayout -> startLayoutRemorse(state, Destructive.ResetLayout)
 }
 
 /**
@@ -426,6 +456,10 @@ private fun startRemorse(state: LauncherState, action: Destructive): Next {
     )
 }
 
+/** Starts the remorse timer of a destructive action on the whole layout, unless it is already waiting. */
+private fun startLayoutRemorse(state: LauncherState, action: Destructive): Next =
+    if (state.layout == null || state.remorse?.action == action) Next(state) else startRemorse(state, action)
+
 /** Runs the destructive [action] whose remorse timer is over (FR-GEST-06). */
 private fun commit(state: LauncherState, action: Destructive): Next = when (action) {
     is Destructive.RemoveFolder -> Next(state.editLayout { LayoutRules.removeFolder(it, action.folder) })
@@ -439,6 +473,9 @@ private fun commit(state: LauncherState, action: Destructive): Next = when (acti
             ),
             listOf(Effect.DismissNotifications(action.refs)),
         )
+    // In the device locale's alphabetical order, as on a first run (FR-SET-10).
+    Destructive.SortAppGrid -> Next(state.editLayout { LayoutRules.sortAlphabetically(it, state.apps, Collator.getInstance()) })
+    Destructive.ResetLayout -> resetLayout(state)
 }
 
 /**

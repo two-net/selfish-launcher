@@ -59,6 +59,15 @@ object Sizes {
     /** The outline of a chosen option, such as the active ambience, in the highlight color (FR-TOP-02, FR-TOP-03). */
     val SelectedOutline: Dp = 4.dp
 
+    /** The indicator at the end of a switch row, which glows in the highlight color while on (SRS §4.13). */
+    val SwitchIndicator: Dp = 24.dp
+
+    /** The ring of a switch row's indicator while it is off. */
+    val SwitchRing: Dp = 4.dp
+
+    /** A highlight-color swatch in Settings, one touch target across (FR-SET-06, UI-06). */
+    val Swatch: Dp = 48.dp
+
     /** How strongly the wallpaper is blurred behind the open App Grid, where supported (FR-GRID-01). */
     val BlurRadius: Dp = 32.dp
 

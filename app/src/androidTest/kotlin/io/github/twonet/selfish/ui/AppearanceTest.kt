@@ -39,6 +39,7 @@ import io.github.twonet.selfish.ui.events.EventsTags
 import io.github.twonet.selfish.ui.folder.FolderTags
 import io.github.twonet.selfish.ui.grid.AppGridTags
 import io.github.twonet.selfish.ui.home.HomeTags
+import io.github.twonet.selfish.ui.settings.SettingsTags
 import io.github.twonet.selfish.ui.tokens.DarkColors
 import io.github.twonet.selfish.ui.tokens.LauncherColors
 import io.github.twonet.selfish.ui.tokens.LightColors
@@ -122,8 +123,8 @@ class AppearanceTest {
     /**
      * Visits every surface built so far and checks that it is drawn in
      * [appearance]: Home, the App Grid, a context menu, a folder, the
-     * remorse banner, Events, the Top Menu and Wallpaper details (FR-THM-07).
-     * Settings (#18) and the tutorial (#19) will use the same tokens.
+     * remorse banner, Events, the Top Menu, Wallpaper details, Settings and
+     * About (FR-THM-07). The tutorial (#19) will use the same tokens.
      */
     private fun everySurfaceIs(appearance: Appearance, state: LauncherState) {
         val colors = if (appearance == Appearance.Dark) DarkColors else LightColors
@@ -161,6 +162,12 @@ class AppearanceTest {
         go(Action.LayerSettled(Layer.Home))
         go(Action.OpenWallpaperDetails)
         assertTextIn(colors, today.title, WallpaperDetailsTags.SCREEN, "Wallpaper details")
+
+        go(Action.OpenSettings)
+        assertTextIn(colors, string(R.string.settings_show_clock), SettingsTags.PAGE, "Settings")
+
+        go(Action.OpenAbout)
+        assertTextIn(colors, string(R.string.about_not_affiliated), SettingsTags.ABOUT, "About")
     }
 
     @Test
@@ -222,6 +229,23 @@ class AppearanceTest {
         assertEquals(AppearanceMode.Dark, launcher.state.settings.appearance)
         assertEquals(DarkColors.textPrimary, textColor(string(R.string.appearance_dark), TopMenuTags.SHEET), "Selected, and Dark")
         assertEquals(Layer.TopMenu, launcher.state.layer, "The menu stays open")
+    }
+
+    @Test
+    @Verifies("FR-THM-09", "FR-SET-01", "FR-ANIM-11")
+    fun choosingAnAppearanceInSettingsTakesEffectAtOnce() {
+        launcher.show(state(layer = Layer.Settings, systemDark = false))
+        assertTextIn(LightColors, string(R.string.appearance_dark), SettingsTags.PAGE, "Settings")
+
+        rule.mainClock.autoAdvance = false
+        rule.onNode(hasText(string(R.string.appearance_dark)) and hasClickAction() and hasAnyAncestor(hasTestTag(SettingsTags.PAGE))).performClick()
+        rule.mainClock.advanceTimeByFrame()
+        rule.mainClock.advanceTimeBy(Motion.LONG_MILLIS + FRAME_MILLIS)
+
+        assertEquals(AppearanceMode.Dark, launcher.state.settings.appearance)
+        assertEquals(DarkColors.textPrimary, textColor(string(R.string.appearance_dark), SettingsTags.PAGE), "Selected, and Dark")
+        assertEquals(Layer.Settings, launcher.state.layer, "Settings stays open")
+        rule.mainClock.autoAdvance = true
     }
 
     @Test

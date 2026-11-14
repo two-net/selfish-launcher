@@ -84,9 +84,11 @@ dependencies {
 }
 
 // BackupRulesTest, ThemeRulesTest and ManifestRulesTest read resources and
-// the manifest straight from src/main. Make them test inputs, or an edit to
-// them would leave the tests UP-TO-DATE.
+// the manifest straight from src/main, and LicensesRulesTest the runtime
+// dependency list. Make them test inputs, or an edit to them would leave the
+// tests UP-TO-DATE.
 tasks.withType<Test>().configureEach {
+    inputs.file(rootProject.file("gradle/runtime-dependencies.txt")).withPropertyName("runtimeDependencies").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.dir("src/main/res/xml").withPropertyName("backupRules").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.dir("src/main/res/values").withPropertyName("themes").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.dir("src/main/res/mipmap-anydpi").withPropertyName("launcherIcon").withPathSensitivity(PathSensitivity.RELATIVE)
